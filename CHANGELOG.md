@@ -1,3 +1,48 @@
+## [6.39.92] — 2026-05-22
+
+### Fix: cloudflared DNS bypass Pi-hole
+- Pi-hole mangles SRV record lookups required by cloudflared for
+  argotunnel.com edge discovery. Changed cloudflared dns to use
+  1.1.1.1 and 8.8.8.8 directly, bypassing Pi-hole for the tunnel
+  container only.
+
+## [6.39.91] — 2026-05-22
+
+### Fix: cloudflared DNS resolution failure
+- Docker's internal DNS resolver (127.0.0.11) was failing to forward
+  queries due to UFW rules. Added dns: 192.168.1.52 to cloudflared
+  service in docker-compose.yml to use the local network DNS directly.
+
+## [6.39.90] — 2026-05-22
+
+### Fix: Cloudflare tunnel failing after UFW setup
+- cloudflared was using QUIC (UDP 7844) which UFW blocks for Docker
+  containers. Added --protocol http2 to force TCP 443 instead, which
+  passes through the existing firewall rules.
+
+## [6.39.89] — 2026-05-22
+
+### Fix: 416 Requested Range Not Satisfiable on /verify-email
+- verify_email_page() was using Flask's send_file() which enables HTTP
+  range requests by default. When a browser or CDN sent a Range header
+  (e.g. Range: bytes=500-999) and the range was out of bounds, Werkzeug
+  raised a 416 error. Replaced send_file() with a direct file read and
+  plain text/html response, which does not support range requests and
+  therefore never raises 416.
+
+## [6.39.88] — 2026-05-22
+
+### Fix: security page white background
+- security.html :root block had --black:var(--black), --white:var(--white),
+  --mu:var(--mu) and --bd:var(--bd) as self-referencing circular CSS vars.
+  Circular CSS vars resolve to the property initial value (transparent/
+  unset), so body background:var(--black) produced a white page.
+  Replaced with actual hex/rgba values.
+
+### Fix: TOC was not visible on security page
+- Caused by the white background rendering failure above. TOC JS was
+  correct — the page layout was broken. Fixed by resolving circular vars.
+
 ## [6.39.87] — 2026-05-22
 
 ### Fix: language dropdown check mark showing on all items

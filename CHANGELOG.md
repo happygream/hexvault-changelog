@@ -1,3 +1,10 @@
+## [6.39.87] — 2026-05-22
+
+### Fix: language dropdown check mark showing on all items
+- SVG polyline rendered as visible text character in some browsers.
+  Replaced with a simple 6px purple dot span — hidden by default,
+  visible only on the active language option.
+
 ## [6.39.86] — 2026-05-22
 
 ### Fix: language selector tick marks rendering oversized

@@ -1,3 +1,58 @@
+## [6.40.3] — 2026-06-25
+
+### Fix: language switch only translated the hero
+- i18n.js had no cache-buster on its script tag, so browsers kept running a
+  stale engine that still listed dropped languages. The tag is now versioned in
+  index.html and landing.html.
+- Locale fetches used a literal {{ APP_VERSION }} (i18n.js is served static and
+  never templated), which pinned locale files in cache. The engine now reads
+  its own ?v= and reuses it for every locale fetch.
+- A saved locale for a removed language (e.g. sv) was never validated, so pages
+  half-translated off the old keyed dict. _detect() now drops an unsupported
+  saved locale and falls back to detection.
+- Removed 26 locale files for languages no longer offered. Active set: en, de,
+  fr, es, pt, it, nl.
+
+## [6.40.2] — 2026-06-25
+
+### Fix: HexGuard AI returned 503 on every request
+- The pinned Anthropic model claude-sonnet-4-20250514 was retired (API returned
+  404 not_found), which the proxy surfaced as 503. Both HexGuard calls now use
+  claude-sonnet-4-6.
+
+## [6.40.1] — 2026-06-25
+
+### i18n: dynamic content now localises
+- A debounced MutationObserver re-translates JS-rendered UI (the vault app) as
+  it builds — fires only on real element additions, no-op for English,
+  idempotent and self-write-guarded.
+- Extracted translatable strings from the security, FAQ, updates,
+  AI-transparency and join pages (657 source strings). Legal pages left in
+  English by design.
+
+## [6.40.0] — 2026-06-25
+
+### Fix: app failed to initialise after a deploy
+- A malformed callback in script.js caused a script parse error that prevented
+  the app from loading. Corrected.
+
+### i18n: full-page runtime translation
+- Text blocks are translated by English-text lookup against each locale's pages
+  map, preserving inline markup and leaving brand names, versions and code
+  untouched — no per-element tagging or HTML edits.
+- Added data-i18n-html for inline-markup strings.
+- Landing page fully translated into German, French, Spanish, Portuguese,
+  Italian and Dutch.
+- Language selector reduced to the maintained tier-1 set (en, de, fr, es, pt,
+  it, nl).
+- Added extract_strings.py and sync_locales.py tooling with brand-term
+  protection.
+
+### Performance: status endpoint timeout resolved
+- /api/public/uptime no longer times out: daily rollup table, single-writer
+  election across workers, Redis response cache, indexed live query and batched
+  pruning. Responds in well under a second.
+
 ## [6.39.99] — 2026-06-23
 
 ### API hardening and browser extension fixes

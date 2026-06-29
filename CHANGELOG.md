@@ -1,3 +1,71 @@
+## [6.40.16] — 2026-06-29
+
+### Fix: sharing flow — prevent duplicate links and tighten feedback
+- "Generate Share Link" had no button state, so a double-click could mint two
+  separate public links (two live exposures of the same credential). It now shows
+  "Generating…" and disables for the duration. The same protection was added to
+  the share-with-user form ("Sharing…").
+- The share-link expiry selector opened with "1 Hour" visually selected while the
+  label and the actual default were "1 Day" — a mismatch that could mislead the
+  user about how long the link lives. The markup default now matches (1 Day).
+- The copy button showed "OK Copied!" (a stray artifact); it now reads "Copied!".
+- Revoking a share link gave no confirmation; it now shows "Share link revoked".
+
+### Audit note
+- Left as-is (already correct): the zero-knowledge link crypto (one-time key in
+  the URL fragment, server stores only ciphertext), the post-generation meta that
+  clearly states expiry and remaining views, the safe defaults (1 view), the
+  persistent-share button (already showed "Sharing…"), and internal revoke
+  (already confirmed "Access revoked").
+
+## [6.40.15] — 2026-06-29
+
+### Fix: consistent loading state across the remaining save forms
+- Added a shared `withSubmitLoading` helper and applied it to the forms that
+  still fired async saves with no button feedback: the settings username and
+  email updates, and the secure-note save. Each now disables its button, shows
+  "Saving…" with `aria-busy`, and restores on every exit path — same protection
+  the entry save got in 6.40.14.
+- Left untouched: login and team-vault share already showed progress, the 2FA
+  verify form already guards double-submit, and onboarding is intentionally a
+  non-skippable guided flow (progress dots, server-persisted completion).
+
+## [6.40.14] — 2026-06-29
+
+### Accessibility: toasts now announced to screen readers
+- The toast notifications that confirm actions ("Password saved", "Copied",
+  "Failed to save", etc.) were inserted into a plain container with no live
+  region, so screen-reader users got no feedback at all. Each toast now carries
+  `role="alert"` for errors (assertive) and `role="status"` otherwise (polite),
+  so assistive tech reads them as they appear.
+
+### Fix: hardened the add/edit entry save flow
+- The save button stayed active during the save (breach check + encryption +
+  network round-trip) with no feedback, so a double-click could create duplicate
+  entries. It now disables and shows "Saving…" for the duration, with `aria-busy`,
+  and restores on success, server error, or exception.
+- Required-field validation (name, password) now runs before the breach-check
+  network call instead of after it, and focus moves to the offending field so the
+  user can fix it immediately. The name field was previously not validated client
+  side at all.
+
+## [6.40.13] — 2026-06-29
+
+### Accessibility: honour "reduce motion" across the whole app
+- The `prefers-reduced-motion` rule previously only covered the auth screen, so
+  users who turn on "reduce motion" in their OS (common for vestibular disorders,
+  migraine and motion sensitivity) still got every looping animation in the app:
+  floating background blobs, gradient shifts, and pulsing dots/badges/glows.
+- The setting now applies app-wide. Decorative loops stop, entrance animations
+  settle instantly at their visible end state, and transitions collapse to
+  near-instant while still firing their end events (so JS that waits on
+  transitionend/animationend keeps working).
+
+### Polish: proper ellipsis glyph in loading states and placeholders
+- Replaced literal three-dot `...` with the single `…` glyph across 22 user-facing
+  strings (loading states like "Loading…", "Analysing vault…", "Encrypting and
+  importing…", and input placeholders), matching standard typographic practice.
+
 ## [6.40.11] — 2026-06-25
 
 ### Fix: auth panel overflow (passkey card clipped)

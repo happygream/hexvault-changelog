@@ -1,3 +1,118 @@
+## [6.40.11] — 2026-06-25
+
+### Fix: auth panel overflow (passkey card clipped)
+- The right auth column (`.auth-right`) centred the form with `align-items:center`
+  and no scroll, so once the injected passkey card made the form taller than the
+  viewport, the card was clipped off the top with no way to reach it. Switched to
+  `align-items:safe center` (falls back to top-alignment when content overflows)
+  and added `overflow-y:auto`, so tall forms scroll cleanly instead of clipping.
+
+### Fix: auth buttons now match in size
+- The three stacked action buttons were inconsistent: Create Account
+  (`.auth-submit`) was 50px tall, Sign in with biometric (`.auth-bio-btn`) 44px,
+  and Sign in with Security Key (`.btn-security-key`) was padding-driven (~46px)
+  with an 8px radius vs the others' 12px. All three are now a uniform 50px height,
+  full width, 12px radius.
+## [6.40.10] — 2026-06-25
+
+### Fix: card interaction + unstyled score-breakdown panel
+- `.plan-card` is click-selectable (it has a lift-on-hover and a JS handler) but
+  had no `cursor:pointer`, so it didn't read as clickable. Added it.
+- The security-score breakdown panel (`.sbp-header`, `.sbp-title`, `.sbp-factors`)
+  had no CSS, so its title and dismiss button didn't align and the factor list had
+  no spacing. Added generic header/title/list styling to match the app's patterns.
+
+### Audit note
+- Reviewed the full card system: the radius/padding variety and the duplicate
+  `.copy-card` / `.plan-card` / `.glass-card` definitions are intentional
+  (per-component sizing and deliberate !important theme overrides), so they were
+  left as-is rather than homogenised.
+## [6.40.9] — 2026-06-25
+
+### Fix: previously-unstyled component classes
+- Audited every class used in the markup against the stylesheet and found several
+  with no CSS at all — the same root cause as the modal-body padding bug.
+- `.settings-row` rows had no flex layout, so the label and its toggle/control
+  stacked vertically instead of sitting on opposite ends. Now a proper
+  space-between row, matching the inline-styled settings rows.
+- `.settings-label`, `.settings-hint`, `.settings-badge-pro` and `.field-label`
+  had no typography; styled to match the established label/hint/badge patterns
+  (theme-safe tokens).
+- `.modal-hdr` (9 compact modals: recipe, tag manager, group, anomaly, encrypted
+  export, inheritance, identity card, version history, watchtower) had none of the
+  modal header's padding/flex/border, so the title and close button were
+  mispositioned. Folded into the `.modal-header` rule.
+- `.field-input` and `.vault-search` inputs were rendering as default browser
+  inputs in the dark UI; routed into the existing `.hv-input` styling for full
+  parity including focus and light theme.
+
+## [6.40.8] — 2026-06-25
+
+### Fix: inconsistent modal padding
+- Five modals (Import/Export, re-encrypt, family management, AI fix, enterprise
+  invite) used a `.modal-body` wrapper that was never given any padding, so their
+  content sat flush to the edges while the header was inset. `.modal-body` now
+  shares `.modal-content`'s exact padding (32px desktop, 20px/16px mobile), so the
+  body lines up with the header on every modal.
+
+### Fix: Import/Export "Browse File" button alignment
+- The button is `display:flex` (block-level), so inside the centred drop zone it
+  sat left of the "or click to browse" text. Set it to inline-flex so it centres
+  directly beneath the prompt.
+
+## [6.40.7] — 2026-06-25
+
+### Fix: footer links rendering with stray dividers and uneven spacing
+- The locale engine keyed text blocks by their text, so footer links that share
+  a label with a nav link (Enterprise, Security, Blog, Extension) had the nav
+  link's anchor markup injected into them, nesting an <a> inside each and
+  breaking layout. The engine now refuses to apply a translation whose tag shape
+  doesn't match the element, so plain links stay plain.
+
+### Fix: blog index showing "Post 1", "Post 2" labels
+- Block-style card links were mis-detected as inline, so the whole blog grid was
+  treated as one translatable unit and the build-comments between cards were
+  rewritten as visible text. Leaf-block detection now descends into anchors, and
+  the stray comments were removed.
+
+### Fix: table of contents on content and legal pages
+- toc.js was missing on several pages and elsewhere looked for .sec[id] while the
+  pages use .section[id], so the scroll highlight never bound. It now derives its
+  sections from the TOC's own links and is included on every page that has a TOC.
+
+### Design: hero eyebrow and footer cleanup
+- Removed the glowing pulsing status-dot from the hero eyebrow.
+- Removed a duplicated footer block (the page tail was emitted twice).
+
+## [6.40.6] — 2026-06-25
+
+### Design: remove AI-gradient styling from the marketing site
+- Replaced all gradient-clip text (rainbow headings and the stat row) with a
+  single solid accent. Gradient text is the clearest AI-design tell.
+- Flattened the gradient call-to-action buttons to a solid accent and removed
+  the glow drop-shadow on the hero heading.
+- Removed unused gradient-text utility classes.
+- Fixed the stale site-shared.css cache-buster so style changes reach browsers.
+
+## [6.40.5] — 2026-06-25
+
+### Fix: app layout and mobile menu font
+- The vault scroll container was a centred max-width column, which parked the
+  scrollbar inset from the window edge with an empty gap beyond it. It is now a
+  full-width scroll container with the content centred inside.
+- The mobile header overflow menu rendered its labels in the system button font
+  instead of the app font. The font is now set explicitly.
+
+## [6.40.4] — 2026-06-25
+
+### i18n: content pages now translate
+- The site content pages (blog, security, FAQ, IAM, HexGuard, extension, about,
+  enterprise, trust and others) now load the translation engine with a version
+  cache-buster and have their copy translated into German, French, Spanish,
+  Portuguese, Italian and Dutch.
+- Long-form blog articles and legal pages (privacy, terms) deliberately remain
+  in English; their chrome still localises.
+
 ## [6.40.3] — 2026-06-25
 
 ### Fix: language switch only translated the hero

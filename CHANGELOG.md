@@ -1,3 +1,15 @@
+## [6.40.21] — 2026-06-30
+
+### Security:
+- Sentry tunnel: added a host allowlist so the public /sentry-tunnel endpoint only forwards to known Sentry ingest hosts (*.ingest.sentry.io / *.ingest.de.sentry.io). Closes a server-side request forgery / open-proxy vector where a client-supplied DSN host was forwarded unchecked.
+- Desktop release upload: the uploaded filename is now run through secure_filename with a path-containment check before writing, preventing path traversal on write (defence-in-depth; the endpoint is already deploy-secret gated).
+- Executive security report: the 500 error handler no longer returns the exception message or stack trace to the client (logged server-side only).
+
+### SEO:
+- Rebuilt sitemap.xml to be complete and accurate (28 URLs): added /cookies, /status, /sub-processors and the api-errors blog post; removed the dead /blog/building-mpa-flask entry (it has no route and returned 404); refreshed all lastmod dates.
+- Added schema.org JSON-LD (WebPage) structured data to /enterprise, /extension, /press and /sub-processors.
+- Fixed a stray extra ">" in the /enterprise meta description.
+
 ## [6.40.20] — 2026-06-30
 
 ### Fix: stop the /api/org/groups 403 on every settings load

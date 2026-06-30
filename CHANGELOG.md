@@ -1,3 +1,55 @@
+## [6.40.20] — 2026-06-30
+
+### Fix: stop the /api/org/groups 403 on every settings load
+- The team settings tab called initOrgGroups unconditionally, which fetched
+  /api/org/groups even when the user has no organisation — returning 403 and
+  logging an error to the console and Sentry each time. It now checks org
+  membership first and skips the request (hiding the section) when there's no
+  org, so the failed call no longer fires.
+
+## [6.40.19] — 2026-06-30
+
+### Fix: empty-state layouts (vault, folder, team)
+- The passwords tab could render two empty states at once: when the vault was
+  empty with no folder selected, the folder handler drew "No passwords in this
+  folder" (with a left-orphaned Add Password button) on top of the rich "Your
+  vault is empty" state. The folder handler now defers to the main renderer for
+  the all-vault view, so there's a single source of truth; its own empty state
+  only appears when a specific folder or virtual folder is genuinely empty, and
+  it hides the generic one so the two never stack.
+- All the empty states (vault, folder, and the team/org "Create your
+  organisation" / "No organisation yet" prompts) were pinned to the top of their
+  containers. They now centre vertically and horizontally via a shared layout, so
+  the message and its buttons sit in the middle of the available area instead of
+  floating high or off to one side.
+
+## [6.40.18] — 2026-06-30
+
+### Fix: Temporary Access panel showed when there was no organisation
+- The just-in-time "Request Temporary Access" panel was injected into the Team
+  Vault tab unconditionally, so it appeared even in the "No organisation yet"
+  empty state — asking the user to request access to credentials that don't
+  exist. It's now gated on organisation membership (`currentUserOrgId`), and any
+  stale panel is removed when the user has no org (e.g. after leaving one).
+
+## [6.40.17] — 2026-06-30
+
+### Fix: checkout was failing — missing Stripe consent_collection
+- The checkout session set `custom_text.terms_of_service_acceptance` but not the
+  `consent_collection.terms_of_service = required` that Stripe mandates alongside
+  it, so every checkout returned a 400 (`parameter_missing`) and no one could
+  start a trial. Added the consent collection; checkout now completes and the
+  customer ticks the ToS box before subscribing.
+
+### Fix: "OK" rendering where a checkmark should be
+- The plan-comparison feature lists drew a literal "OK" before every line (a CSS
+  `content: 'OK'` placeholder that shipped), so the pricing modal read
+  "OKUnlimited passwords…". Replaced with a proper check glyph.
+- Swept the same placeholder out of the rest of the app: notification icons,
+  the password-strength requirement checklist, the entries export table, and the
+  admin step/onboarding indicators all used "OK"/"x" as stand-in icons and now
+  use ✓ / ✕. Confirmed no other text-as-icon values remain in the stylesheet.
+
 ## [6.40.16] — 2026-06-29
 
 ### Fix: sharing flow — prevent duplicate links and tighten feedback

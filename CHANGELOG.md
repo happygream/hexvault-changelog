@@ -1,3 +1,17 @@
+## [6.40.24] — 2026-07-01
+
+### Fixed
+- **Table of contents — consistent sticky + active highlight across every page.** The TOC sidebar failed to stay pinned while scrolling on the Trust Centre and Extension Security pages, and the active-section highlight never appeared on Extension Security.
+  - Sticky was broken because those two pages set `overflow-x:hidden` on `<body>`, which makes the body a scroll container and disables `position:sticky` for all descendants (and scrambles the scroll-spy's offset math). Switched both to `overflow-x:clip`, which still prevents horizontal scroll but leaves sticky intact. All TOC pages now pin correctly.
+  - The active highlight relied on a scroll-spy that cached the TOC link elements once at load. The i18n DOM-translation pass replaces those elements afterwards, so the spy was toggling `active` on stale, detached nodes. Rewrote `toc.js` to re-query the live links on every update (rAF-throttled), so highlighting stays correct after translation. Extension Security now uses the shared `toc.js` spy like every other content page, giving consistent behaviour site-wide.
+
+## [6.40.23] — 2026-07-01
+
+### Fix: first-time 2FA setup — QR stayed on screen and verify returned 400
+- The pending TOTP secret was stored in the Flask session, but sessions are signed cookies that every request rewrites (each request updates last_activity/IP). During forced first-time setup a concurrent background request could load the session before /api/2fa/setup wrote the secret, then rewrite the cookie without it — clobbering the pending secret. By the time the user submitted their code, /api/2fa/verify found no secret and returned 400 ("Setup session expired"), so the QR never advanced.
+- The pending secret is now stored server-side in a dedicated users.pending_totp_secret column (added by migration) instead of the session cookie, which is race-free. setup, qrcode and verify all read it from there, and it's cleared the moment 2FA is enabled. No behaviour change for the user beyond setup now completing reliably.
+- Note: the 403 seen in the console alongside this is expected — it is the forced-setup gate correctly blocking vault endpoints until 2FA is enabled, not an error.
+
 ## [6.40.22] — 2026-06-30
 
 ### Fix: table-of-contents scrolling across the site

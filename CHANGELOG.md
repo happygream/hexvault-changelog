@@ -1,3 +1,9 @@
+## [6.40.22] — 2026-06-30
+
+### Fix: table-of-contents scrolling across the site
+- TOC links now land each section clear of the fixed header instead of beneath it. Added scroll-padding-top (and smooth scrolling where it was missing) to the seven blog posts, security, extension-security, privacy and terms — the pages whose in-page anchors previously jumped the heading under the nav. cookies and trust already had both, so were left unchanged.
+- Rewrote blog-toc.js with robust scroll-based active-section highlighting, replacing the IntersectionObserver band that could leave nothing highlighted when a section was taller than the observed band or at the very top/bottom of the page. It now recognises both .toc-nav and .toc-list markup, throttles via requestAnimationFrame, and re-evaluates on resize.
+
 ## [6.40.21] — 2026-06-30
 
 ### Security:

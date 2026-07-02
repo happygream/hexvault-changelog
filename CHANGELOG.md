@@ -1,23 +1,44 @@
+
+
+## [6.40.26] — 2026-07-02
+
+### Fixed
+- **Waitlist signup returned a 500 every time.** `join_waitlist` ran two leftover member-management calls referencing an undefined `member_id` (plus a debug line dumping mail config), so every signup threw and returned an error even though the email was saved. Removed the stray lines.
+- **Org invite-accept page was completely broken.** `join-init.js` was missing the `}` closing an `else` block, so the whole file failed to parse and no handlers wired up. Fixed the brace.
+- **Vault-inheritance heir emails never sent** — the code called an undefined `send_email()`. Added a generic `send_email()` wrapper over the Postmark helper.
+- **Login "auto-join org by email domain" never worked** — it referenced an undefined `email`. Now reads the user's email from the DB and uses it.
+- **Breach-alert emails never sent** — the sender referenced an undefined `username`. Added `username` to the query and passed it through.
+- **Admin Credential-risk and ZK-audit panels 404'd** — `admin-intelligence.js` called `/api/admin/credential-risk` and `/api/admin/zk-audit`; the real routes are `/api/admin/credential-risk-scores` and `/api/admin/zk-audit-report`. Repointed the calls (and dropped a wrong POST on the GET route).
+
+### Added
+- **Secure Send API** (`POST /api/secure-send`, `GET /api/secure-send/list`, `POST /api/secure-send/<token>/revoke`, `GET /api/secure-send/<token>`). The settings UI and the `/s/<token>` viewer referenced these but they had no backend, so the feature was non-functional. Content stays end-to-end encrypted (server only stores ciphertext); consume enforces max-views/expiry/revocation and burns a view per fetch.
+- **Org activity feed backend** (`GET /api/org/activity-feed` REST + `GET /api/org/activity-stream` SSE), backed by `credential_access_log` and scoped to the caller's org. `org-activity-stream.js` (loaded in the app) previously called endpoints that didn't exist.
+
+### Changed
+- Moved the `users.locale` migration into the live migration block. It previously existed only in an unreachable block at end-of-file, so a fresh deploy never created the column and the locale endpoints would have 500'd.
+- Removed that dead end-of-file block (unreachable migration code referencing undefined `cur`/`conn`) and deleted the orphaned `admin_routes.py` reference blob (never imported).
+## [6.40.25] — 2026-07-01
+
+### Fixed
+- **Table of contents on the Trust and Security pages now matches every other page.** Both pages loaded `site.js` *and* the shared `toc.js`. `site.js` ran a second scroll-spy that fought `toc.js` (the active item flickered and would not stay highlighted) and hijacked TOC clicks with `scrollIntoView`, which ignores the fixed-nav offset — so the target heading jumped up under the nav. Disabled `site.js`'s TOC handling entirely (its spy, its click-scroll and the mobile drawer); the shared `toc.js` plus native anchor links with `scroll-padding-top` / `scroll-margin-top` now own the TOC on every page. Clicks land cleanly below the nav and the active section stays highlighted.
+- Moved the blog posts onto the same shared `toc.js` spy (retiring the older `blog-toc.js`), so all content and legal pages now run one identical TOC implementation.
 ## [6.40.24] — 2026-07-01
 
 ### Fixed
 - **Table of contents — consistent sticky + active highlight across every page.** The TOC sidebar failed to stay pinned while scrolling on the Trust Centre and Extension Security pages, and the active-section highlight never appeared on Extension Security.
   - Sticky was broken because those two pages set `overflow-x:hidden` on `<body>`, which makes the body a scroll container and disables `position:sticky` for all descendants (and scrambles the scroll-spy's offset math). Switched both to `overflow-x:clip`, which still prevents horizontal scroll but leaves sticky intact. All TOC pages now pin correctly.
   - The active highlight relied on a scroll-spy that cached the TOC link elements once at load. The i18n DOM-translation pass replaces those elements afterwards, so the spy was toggling `active` on stale, detached nodes. Rewrote `toc.js` to re-query the live links on every update (rAF-throttled), so highlighting stays correct after translation. Extension Security now uses the shared `toc.js` spy like every other content page, giving consistent behaviour site-wide.
-
 ## [6.40.23] — 2026-07-01
 
 ### Fix: first-time 2FA setup — QR stayed on screen and verify returned 400
 - The pending TOTP secret was stored in the Flask session, but sessions are signed cookies that every request rewrites (each request updates last_activity/IP). During forced first-time setup a concurrent background request could load the session before /api/2fa/setup wrote the secret, then rewrite the cookie without it — clobbering the pending secret. By the time the user submitted their code, /api/2fa/verify found no secret and returned 400 ("Setup session expired"), so the QR never advanced.
 - The pending secret is now stored server-side in a dedicated users.pending_totp_secret column (added by migration) instead of the session cookie, which is race-free. setup, qrcode and verify all read it from there, and it's cleared the moment 2FA is enabled. No behaviour change for the user beyond setup now completing reliably.
 - Note: the 403 seen in the console alongside this is expected — it is the forced-setup gate correctly blocking vault endpoints until 2FA is enabled, not an error.
-
 ## [6.40.22] — 2026-06-30
 
 ### Fix: table-of-contents scrolling across the site
 - TOC links now land each section clear of the fixed header instead of beneath it. Added scroll-padding-top (and smooth scrolling where it was missing) to the seven blog posts, security, extension-security, privacy and terms — the pages whose in-page anchors previously jumped the heading under the nav. cookies and trust already had both, so were left unchanged.
 - Rewrote blog-toc.js with robust scroll-based active-section highlighting, replacing the IntersectionObserver band that could leave nothing highlighted when a section was taller than the observed band or at the very top/bottom of the page. It now recognises both .toc-nav and .toc-list markup, throttles via requestAnimationFrame, and re-evaluates on resize.
-
 ## [6.40.21] — 2026-06-30
 
 ### Security:
@@ -29,7 +50,6 @@
 - Rebuilt sitemap.xml to be complete and accurate (28 URLs): added /cookies, /status, /sub-processors and the api-errors blog post; removed the dead /blog/building-mpa-flask entry (it has no route and returned 404); refreshed all lastmod dates.
 - Added schema.org JSON-LD (WebPage) structured data to /enterprise, /extension, /press and /sub-processors.
 - Fixed a stray extra ">" in the /enterprise meta description.
-
 ## [6.40.20] — 2026-06-30
 
 ### Fix: stop the /api/org/groups 403 on every settings load
@@ -38,7 +58,6 @@
   logging an error to the console and Sentry each time. It now checks org
   membership first and skips the request (hiding the section) when there's no
   org, so the failed call no longer fires.
-
 ## [6.40.19] — 2026-06-30
 
 ### Fix: empty-state layouts (vault, folder, team)
@@ -54,7 +73,6 @@
   containers. They now centre vertically and horizontally via a shared layout, so
   the message and its buttons sit in the middle of the available area instead of
   floating high or off to one side.
-
 ## [6.40.18] — 2026-06-30
 
 ### Fix: Temporary Access panel showed when there was no organisation
@@ -63,7 +81,6 @@
   empty state — asking the user to request access to credentials that don't
   exist. It's now gated on organisation membership (`currentUserOrgId`), and any
   stale panel is removed when the user has no org (e.g. after leaving one).
-
 ## [6.40.17] — 2026-06-30
 
 ### Fix: checkout was failing — missing Stripe consent_collection
@@ -81,7 +98,6 @@
   the password-strength requirement checklist, the entries export table, and the
   admin step/onboarding indicators all used "OK"/"x" as stand-in icons and now
   use ✓ / ✕. Confirmed no other text-as-icon values remain in the stylesheet.
-
 ## [6.40.16] — 2026-06-29
 
 ### Fix: sharing flow — prevent duplicate links and tighten feedback
@@ -101,7 +117,6 @@
   clearly states expiry and remaining views, the safe defaults (1 view), the
   persistent-share button (already showed "Sharing…"), and internal revoke
   (already confirmed "Access revoked").
-
 ## [6.40.15] — 2026-06-29
 
 ### Fix: consistent loading state across the remaining save forms
@@ -113,7 +128,6 @@
 - Left untouched: login and team-vault share already showed progress, the 2FA
   verify form already guards double-submit, and onboarding is intentionally a
   non-skippable guided flow (progress dots, server-persisted completion).
-
 ## [6.40.14] — 2026-06-29
 
 ### Accessibility: toasts now announced to screen readers
@@ -132,7 +146,6 @@
   network call instead of after it, and focus moves to the offending field so the
   user can fix it immediately. The name field was previously not validated client
   side at all.
-
 ## [6.40.13] — 2026-06-29
 
 ### Accessibility: honour "reduce motion" across the whole app
@@ -149,7 +162,6 @@
 - Replaced literal three-dot `...` with the single `…` glyph across 22 user-facing
   strings (loading states like "Loading…", "Analysing vault…", "Encrypting and
   importing…", and input placeholders), matching standard typographic practice.
-
 ## [6.40.11] — 2026-06-25
 
 ### Fix: auth panel overflow (passkey card clipped)
@@ -197,7 +209,6 @@
 - `.field-input` and `.vault-search` inputs were rendering as default browser
   inputs in the dark UI; routed into the existing `.hv-input` styling for full
   parity including focus and light theme.
-
 ## [6.40.8] — 2026-06-25
 
 ### Fix: inconsistent modal padding
@@ -211,7 +222,6 @@
 - The button is `display:flex` (block-level), so inside the centred drop zone it
   sat left of the "or click to browse" text. Set it to inline-flex so it centres
   directly beneath the prompt.
-
 ## [6.40.7] — 2026-06-25
 
 ### Fix: footer links rendering with stray dividers and uneven spacing
@@ -235,7 +245,6 @@
 ### Design: hero eyebrow and footer cleanup
 - Removed the glowing pulsing status-dot from the hero eyebrow.
 - Removed a duplicated footer block (the page tail was emitted twice).
-
 ## [6.40.6] — 2026-06-25
 
 ### Design: remove AI-gradient styling from the marketing site
@@ -245,7 +254,6 @@
   the glow drop-shadow on the hero heading.
 - Removed unused gradient-text utility classes.
 - Fixed the stale site-shared.css cache-buster so style changes reach browsers.
-
 ## [6.40.5] — 2026-06-25
 
 ### Fix: app layout and mobile menu font
@@ -254,7 +262,6 @@
   full-width scroll container with the content centred inside.
 - The mobile header overflow menu rendered its labels in the system button font
   instead of the app font. The font is now set explicitly.
-
 ## [6.40.4] — 2026-06-25
 
 ### i18n: content pages now translate
@@ -264,7 +271,6 @@
   Portuguese, Italian and Dutch.
 - Long-form blog articles and legal pages (privacy, terms) deliberately remain
   in English; their chrome still localises.
-
 ## [6.40.3] — 2026-06-25
 
 ### Fix: language switch only translated the hero
@@ -279,14 +285,12 @@
   saved locale and falls back to detection.
 - Removed 26 locale files for languages no longer offered. Active set: en, de,
   fr, es, pt, it, nl.
-
 ## [6.40.2] — 2026-06-25
 
 ### Fix: HexGuard AI returned 503 on every request
 - The pinned Anthropic model claude-sonnet-4-20250514 was retired (API returned
   404 not_found), which the proxy surfaced as 503. Both HexGuard calls now use
   claude-sonnet-4-6.
-
 ## [6.40.1] — 2026-06-25
 
 ### i18n: dynamic content now localises
@@ -296,7 +300,6 @@
 - Extracted translatable strings from the security, FAQ, updates,
   AI-transparency and join pages (657 source strings). Legal pages left in
   English by design.
-
 ## [6.40.0] — 2026-06-25
 
 ### Fix: app failed to initialise after a deploy
@@ -319,7 +322,6 @@
 - /api/public/uptime no longer times out: daily rollup table, single-writer
   election across workers, Redis response cache, indexed live query and batched
   pruning. Responds in well under a second.
-
 ## [6.39.99] — 2026-06-23
 
 ### API hardening and browser extension fixes
@@ -342,15 +344,12 @@ Extension (v1.0.97)
   that only ever lives in the link fragment, never on the server.
 - Saving or removing an email alias provider (SimpleLogin / Addy) from the
   extension now works.
-
 ## [6.39.98] — 2026-05-22
 
 ### Fix: i18n.js not loaded on landing page
 - landing.html was missing the i18n.js script tag entirely. Without it
   window.t() and hvSetLocale() don't exist so no translation fires.
   Added i18n.js before nav-drawer.js on landing.html.
-
-
 ## [6.39.97] — 2026-05-22
 
 ### Fix: language selector rewritten from scratch
@@ -359,23 +358,17 @@ Extension (v1.0.97)
   as constants. Uses display:block/none for open/close instead of opacity
   transitions so there is no dependency on external CSS being loaded.
   Syntax error from font-family with spaces eliminated.
-
-
 ## [6.39.96] — 2026-05-22
 
 ### Fix: lang-selector.js syntax error
 - Font family with spaces in inline style string caused SyntaxError.
   Simplified to monospace fallback.
-
-
 ## [6.39.95] — 2026-05-22
 
 ### Fix: language dropdown not opening + wrong button styling
 - openDropdown/closeDropdown now set opacity/transform/pointerEvents
   inline so they work regardless of CSS caching.
 - Button, options, active states all inline-styled for cache independence.
-
-
 ## [6.39.94] — 2026-05-22
 
 ### Fix: language dropdown overflow — force cache bust
@@ -383,16 +376,12 @@ Extension (v1.0.97)
   Added ?v=6.39.94 to site-shared.css link on all 27 pages.
 - lang-selector.js: dropdown position and width now set via inline
   styles so they cannot be overridden or cached by old CSS.
-
-
 ## [6.39.93] — 2026-05-22
 
 ### Fix: language dropdown overflowing page content
 - .nlang-drop had no max-width constraint, causing it to expand and
   overlap page content. Fixed to 200px fixed width with overflow hidden.
   z-index raised to 9999 to ensure it always renders above page content.
-
-
 ## [6.39.89] — 2026-05-22
 
 ### Fix: 416 Requested Range Not Satisfiable on /verify-email
@@ -402,8 +391,6 @@ Extension (v1.0.97)
   raised a 416 error. Replaced send_file() with a direct file read and
   plain text/html response, which does not support range requests and
   therefore never raises 416.
-
-
 ## [6.39.88] — 2026-05-22
 
 ### Fix: security page white background
@@ -416,16 +403,12 @@ Extension (v1.0.97)
 ### Fix: TOC was not visible on security page
 - Caused by the white background rendering failure above. TOC JS was
   correct — the page layout was broken. Fixed by resolving circular vars.
-
-
 ## [6.39.87] — 2026-05-22
 
 ### Fix: language dropdown check mark showing on all items
 - SVG polyline rendered as visible text character in some browsers.
   Replaced with a simple 6px purple dot span — hidden by default,
   visible only on the active language option.
-
-
 ## [6.39.86] — 2026-05-22
 
 ### Fix: language selector tick marks rendering oversized
@@ -440,8 +423,6 @@ Extension (v1.0.97)
 - nav section added to en.json and 24 language locale files.
 - Sign In and Start Free Trial were already translating — now all nav
   items translate when language is switched.
-
-
 ## [6.39.85] — 2026-05-22
 
 ### Phase 2 i18n: 32 language translation files
@@ -461,8 +442,6 @@ Extension (v1.0.97)
   page reload.
 - 4 languages (Malay, Thai, Slovak, Bengali) are placeholder files
   that fall back to English pending translation review.
-
-
 ## [6.39.84] — 2026-05-21
 
 ### New: language selector in site nav
@@ -477,8 +456,6 @@ Extension (v1.0.97)
 - lang-selector.js: 5.6KB, no dependencies, keyboard accessible
   (Escape closes dropdown, aria-expanded, role=listbox/option).
 - Language selector CSS added to site-shared.css.
-
-
 ## [6.39.83] — 2026-05-21
 
 ### Phase 1 i18n: infrastructure
@@ -510,8 +487,6 @@ Extension (v1.0.97)
 
 - app.py: /api/locale added to auth exemption consideration; locale
   loaded from DB on session start for server-side use.
-
-
 ## [6.39.82] — 2026-05-21
 
 ### Security: HTTP to HTTPS enforcement
@@ -543,8 +518,6 @@ Extension (v1.0.97)
 ### Security: security.txt updated
 - Expires date updated to 2027-05-21.
 - Hiring field added per RFC 9116.
-
-
 ## [6.39.81] — 2026-05-19
 
 ### Improvements across site, extension, and backend
@@ -576,8 +549,6 @@ Security
 - CORS rejected origins no longer receive Access-Control-Allow-Origin:
   null — header omitted entirely.
 - /api/org/members now paginated to prevent unbounded queries.
-
-
 ## [6.39.80] — 2026-05-18
 
 ### Fix: extension-security.html white background + wrong colours
@@ -594,8 +565,6 @@ Security
   leaving it effectively broken. Removed from download-init.js.
 - site.js also had a hamburger click handler. Removed. nav-drawer.js
   is the sole handler for the nav hamburger across all pages.
-
-
 ## [6.39.79] — 2026-05-15
 
 ### Security: account deletion — 2-step email confirmation
@@ -623,8 +592,6 @@ Security
 - Now searches multiple paths for the extension manifest.json before
   falling back to the existing .env value. Works regardless of where
   the extension files are kept.
-
-
 ## [6.39.77] — 2026-05-15
 
 ### Fix: hamburger double-firing — root cause found
@@ -633,8 +600,6 @@ Security
   loaded alongside nav-drawer.js, registering a second click handler
   that immediately undid every open/close. Removed the nav code from
   landing-billing.js — it only needs to handle the billing toggle.
-
-
 ## [6.39.76] — 2026-05-15
 
 ### Fix: hamburger firing twice and cancelling itself
@@ -642,23 +607,17 @@ Security
   nav-drawer.js script tag, causing the browser to load and execute
   nav-drawer.js twice. Both handlers fired on every click — one opened
   the drawer, the other immediately closed it. Fixed to single </script>.
-
-
 ## [6.39.75] — 2026-05-15
 
 ### Fix: nav-drawer.js script tag not closed on landing page
 - landing.html had <script src="nav-drawer.js"> without </script>.
   Mobile browsers may not execute unclosed external script tags.
   Fixed to <script src="nav-drawer.js"></script>.
-
-
 ## [6.39.74] — 2026-05-15
 
 ### Fix: hamburger not clickable on mobile
 - #nav had overflow:hidden which clipped the hamburger button on mobile,
   making it unclickable. Removed from both landing.html and site-shared.css.
-
-
 ## [6.39.73] — 2026-05-15
 
 ### Fix: architecture grid 3-col too narrow on mobile
@@ -669,8 +628,6 @@ Security
 - Stray .nav-hamburger{display:flex} outside any media query was
   always showing the hamburger button in open/active state, interfering
   with the click handler logic. Removed.
-
-
 ## [6.39.72] — 2026-05-14
 
 ### Fix: FileNotFoundError on /sw.js when sw.js missing from container
@@ -685,8 +642,6 @@ Security
 - landing.html inline style block was missing all nav CSS (#nav, .nlinks,
   .nav-drawer etc) after strip pass. Nav CSS re-injected from
   site-shared.css.
-
-
 ## [6.39.71] — 2026-05-14
 
 ### Fix: landing.html nav has no CSS
@@ -695,13 +650,9 @@ Security
   previous pass, leaving the nav completely unstyled. All nav CSS rules
   (#nav, .nlinks, .nbtns, .nav-drawer, .nav-hamburger etc) injected
   back into landing.html's inline style block.
-
-
 ## [6.39.70] — 2026-05-14
 
 ### Version bump
-
-
 ## [6.39.69] — 2026-05-14
 
 ### Fix: service worker cache invalidation
@@ -709,13 +660,9 @@ Security
   serving site-shared.css from the old hv-shell-6.39.0 cache, ignoring
   the updated file on disk. New cache name hv-shell-6.39.69 forces a
   full re-fetch of all static assets on next page load.
-
-
 ## [6.39.68] — 2026-05-14
 
 ### Version bump for repackage
-
-
 ## [6.39.67] — 2026-05-14
 
 ### Full site audit: all 27 pages clean
@@ -730,8 +677,6 @@ Security
   event handlers, zero inline nav CSS, no duplicate scripts.
 - Desktop app: v1.1.0, loads hexvault.co.uk/app, all URLs valid.
 - CSP: zero inline scripts across all pages — no hash entries needed.
-
-
 ## [6.39.66] — 2026-05-14
 
 ### Fix: changelog entries not centred
@@ -739,8 +684,6 @@ Security
   stretching full viewport width.
 - cl-filters-inner: max-width 1100→900px to match.
 - cl-hero: padding-top 64→56px to match current nav height.
-
-
 ## [6.39.65] — 2026-05-14
 
 ### Fix: changelog hero not centred
@@ -748,8 +691,6 @@ Security
 - cl-sub: margin:0 auto + text-align:center.
 - cl-meta: justify-content:center.
 - s-label: centred and updated to site canonical vars.
-
-
 ## [6.39.64] — 2026-05-14
 
 ### Fix: changelog page broken
@@ -757,8 +698,6 @@ Security
 - Restored changelog-page.js and site.js script tags.
 - Added CSS var aliases (--indigo-l, --mono, --text etc) mapping to
   canonical site vars so existing cl-* CSS rules render correctly.
-
-
 ## [6.39.63] — 2026-05-14
 
 ### Fix: CSP violations — all inline event handlers removed
@@ -772,8 +711,6 @@ Security
   status, sub-processors, terms all lost their body content when inline
   nav CSS was stripped in a previous pass. Content restored from backup.
   Nav CSS re-stripped from restored pages.
-
-
 ## [6.39.62] — 2026-05-14
 
 ### Fix: duplicate scripts in landing.html
@@ -785,8 +722,6 @@ Security
   this package is correct (25,206 chars, 219 matched braces, all nav rules
   present). The 403 is a stale deployment issue — deploying this version
   will resolve it.
-
-
 ## [6.39.61] — 2026-05-14
 
 ### extension.html: full rebuild with boxed card layout
@@ -802,8 +737,6 @@ Security
 - Responsive: 2-col → 1-col at 680px, store buttons stack at 480px,
   browser row stacks to vertical on mobile, safe area insets for notched
   phones, fluid clamp() sizing throughout.
-
-
 ## [6.39.60] — 2026-05-14
 
 ### Critical: stripped 544 inline nav CSS blocks from 23 pages
@@ -818,8 +751,6 @@ Security
 ### Added gradient text utility classes
 - .text-grad: purple→teal (var(--v2)→var(--em)), matches site hero
 - .text-grad-blue: blue→teal (#60a5fa→var(--em)), matches screenshot
-
-
 ## [6.39.59] — 2026-05-14
 
 ### extension.html: fix body text readability
@@ -827,8 +758,6 @@ Security
   Feature list items were too dim to read comfortably.
 - ext-split p: same fix for section description paragraphs.
   var(--mu) is correct for secondary/helper text but not primary content.
-
-
 ## [6.39.58] — 2026-05-14
 
 ### extension.html: CSS fixed properly
@@ -841,8 +770,6 @@ Security
 - feat-list li: changed from grid(140px fixed column) to flex layout —
   fixed column was causing text wrapping on the feature names.
 - All colour references use canonical site vars throughout.
-
-
 ## [6.39.57] — 2026-05-14
 
 ### extension.html: full style block replaced
@@ -855,8 +782,6 @@ Security
   var(--black), var(--bd) throughout.
 - Hero: radial gradient background, pill eyebrow, 800-weight heading.
 - All element colours now match the site design system exactly.
-
-
 ## [6.39.56] — 2026-05-14
 
 ### extension.html: heading design matches site
@@ -868,8 +793,6 @@ Security
   max-width:540px.
 - Section label style (ext-label): updated to site canonical eyebrow:
   monospace, 10px, 700, 2.5px letter-spacing, var(--v2).
-
-
 ## [6.39.55] — 2026-05-14
 
 ### hexguard.html: inline script moved to external file
@@ -877,8 +800,6 @@ Security
   Removes the CSP hash requirement entirely — external scripts are covered
   by script-src 'self' with no per-hash entry needed.
 - Removed sha256-UPzMSUvw7 from CSP.
-
-
 ## [6.39.54] — 2026-05-14
 
 ### extension.html: removed inline nav CSS overrides
@@ -898,8 +819,6 @@ Security
 - The inline scroll reveal script in hexguard.html was blocked by CSP.
   Hash sha256-UPzMSUvw7+PcvQLHAeZqgFSJ3GYEL2o85NHT+Ybdwv0= added to
   script-src directive.
-
-
 ## [6.39.53] — 2026-05-14
 
 ### Fix: EXT_VERSION not injecting in site pages
@@ -921,8 +840,6 @@ Security
   --text:var(--white), --bg:var(--black), --indigo:var(--v),
   --green:var(--em), --muted:var(--mu) etc. Text now matches the rest
   of the site exactly.
-
-
 ## [6.39.52] — 2026-05-14
 
 ### Version tokens: self-updating version strings
@@ -945,8 +862,6 @@ Security
   Used height:56px + line-height:56px for perfect vertical centring on all
   pages — no more varying link heights between pages.
 - Added .nlinks a:hover and aria-current="page" active state.
-
-
 ## [6.39.51] — 2026-05-14
 
 ### Critical fixes: nav, mobile, pricing buttons
@@ -974,8 +889,6 @@ Security
 - Footer: 2-col at 760px, 1-col at 480px.
 - Safe area insets for notched phones on nav and drawer.
 - overflow-x:hidden on html and body globally.
-
-
 ## [6.39.50] — 2026-05-13
 
 ### Sub-nav removed from all pages
@@ -992,8 +905,6 @@ Security
   visibility:hidden + pointer-events:none (closed) and
   visibility:visible + pointer-events:auto (open). Transform handles
   the slide animation cleanly without display toggling.
-
-
 ## [6.39.49] — 2026-05-13
 
 ### Critical nav fix: stray CSS rule hiding nav links site-wide
@@ -1015,8 +926,6 @@ Security
 - blog.html, careers.html, changelog.html, contact.html, cookies.html,
   enterprise.html, press.html, privacy.html, status.html,
   sub-processors.html, terms.html.
-
-
 ## [6.39.48] — 2026-05-13
 
 ### Pricing buttons: full width on mobile
@@ -1044,8 +953,6 @@ Security
   merged with white-space:nowrap — causing white-space to be ignored).
 - .nlinks a: fluid clamp() padding and font-size matching nav behaviour.
 - Footer padding updated to clamp(14px,4vw,56px) matching nav padding.
-
-
 ## [6.39.47] — 2026-05-13
 
 ### Homepage restructure
@@ -1062,8 +969,6 @@ Security
 - File size: 273KB to 185KB. Word count: 11,670 to 8,508.
 - Claim intensity fixes: "the only AI" changed to "AI that actually knows
   your vault", "1,000x" changed to "significantly more resistant".
-
-
 ## [6.39.46] — 2026-05-13
 
 ### Sub-nav: sticky secondary navigation on Security, HexGuard, Extension
@@ -1082,8 +987,6 @@ Security
   Capabilities, vs Generic AI, Privacy, Pricing.
 - extension.html: section IDs added to all 5 h2 sections. Sub-nav with
   Autofill, Security, Features, Platforms, Install.
-
-
 ## [6.39.45] — 2026-05-13
 
 ### New page: /hexguard — HexGuard AI
@@ -1107,8 +1010,6 @@ Security
 - HexGuard AI added as first link in nav across all 25 site pages,
   landing.html, and all mobile drawers. Nav now reads:
   HexGuard AI · Pricing · Security · IAM · Extension · Blog · Download
-
-
 ## [6.39.44] — 2026-05-13
 
 ### Nav: consistent across all pages
@@ -1121,8 +1022,6 @@ Security
   nlinks, nbtns hidden at 600px, wordmark hidden at 420px.
 - landing.html: phishing section eyebrow updated with link to
   /extension-security so visitors can read the full architecture page.
-
-
 ## [6.39.42] — 2026-05-13
 
 ### Mobile responsiveness: landing page overhaul
@@ -1152,8 +1051,6 @@ Security
 - Section padding: reduced at 480px with clamp() overrides
 - img/video/svg/canvas: max-width:100% global safety rule
 - min-width:0 on all elements prevents flex/grid overflow
-
-
 ## [6.39.41] — 2026-05-13
 
 ### Nav: reduced desktop links from 12 to 6
@@ -1162,8 +1059,6 @@ Security
   IAM, Security, Blog, About. All removed items still accessible via the
   mobile drawer and page anchor links.
 - Fixes nav overflow at 1280px and below where items were being cut off.
-
-
 ## [6.39.40] — 2026-05-13
 
 ### New page: /extension-security
@@ -1177,15 +1072,11 @@ Security
 - Flask route /extension-security added, added to auth exempt list.
 - Added to sitemap.xml.
 - Link added from extension.html.
-
-
 ## [6.39.39] — 2026-05-13
 
 ### Reverted landing.html to v6.39.36
 - Restored original landing page. New landing page design preserved for
   future iteration.
-
-
 ## [6.39.38] — 2026-05-13
 
 ### Security: CSP inline script audit and cleanup
@@ -1203,8 +1094,6 @@ Security
   cannot be externalised without changing the injection mechanism.
 - CSRF audit: landing.html has no POST forms and no fetch() calls — all CTAs
   are plain anchor links to /app?register=1. No CSRF token required.
-
-
 ## [6.39.37] — 2026-05-13
 
 ### Landing page: full rebuild
@@ -1231,8 +1120,6 @@ Security
 - Old landing.html sections (HexGuard AI, phishing demo, roadmap, ticker,
   trust badges, comparison tables) preserved on their dedicated pages
   (/security, /iam, /enterprise, /blog) — linked from nav dropdowns.
-
-
 ## [6.39.36] — 2026-05-13
 
 ### Cross-browser compatibility
@@ -1268,8 +1155,6 @@ Security
   Promise, and CSS grid support. If any are missing, shows a banner directing
   the user to update their browser. Prevents a silent blank screen on
   genuinely unsupported browsers.
-
-
 ## [6.39.35] — 2026-05-13
 
 ### Vault: forced 2FA modal visibility fix
@@ -1298,8 +1183,6 @@ Security
 - Firefox compat shim in background.js: _isFirefox detection skips offscreen
   document creation on Firefox (crypto runs in the service worker directly).
 - Three separate zip packages: chrome, firefox, edge.
-
-
 ## [6.39.33] — 2026-05-13
 
 ### Desktop: full custom update UI — no OS dialogs
@@ -1337,8 +1220,6 @@ Security
 - window.HexVaultDesktop.updateAction(action) added to contextBridge so
   in-app overlay buttons can trigger install or browser-open via IPC
   without unsafe-eval or direct Node access from the renderer.
-
-
 ## [6.39.30] — 2026-05-13
 
 ### Security: headers hardened across all responses
@@ -1373,8 +1254,6 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
 - Code blocks: smaller font and padding on mobile.
 - Touch targets: nav buttons get min-height:44px on pointer:coarse devices.
 - Safe area insets on nav for notched phones.
-
-
 ## [6.39.29] — 2026-05-13
 
 ### SEO: full audit and overhaul
@@ -1415,8 +1294,6 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
 #### Flask
 - /iam route added, added to auth exempt list.
 - /iam added to sitemap.xml.
-
-
 ## [6.39.15] — 2026-05-12
 
 ### Feature: GitHub Actions webhook deploy — no SSH required
@@ -1432,15 +1309,11 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
   and HMAC signature.
 - Add DESKTOP_DEPLOY_SECRET to .env (any random string, keep it secret).
   Add the same value as DEPLOY_WEBHOOK_SECRET in GitHub repo secrets.
-
-
 ## [6.39.14] — 2026-05-12
 
 ### Added: .gitignore for GitHub repository
 - Excludes .env, backups/, desktop/node_modules/, desktop/dist/,
   static/releases/, logs, OS files, and editor configs.
-
-
 ## [6.39.13] — 2026-05-12
 
 ### Fix: download page redirected to landing page when file missing
@@ -1463,8 +1336,6 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
 - Requires GitHub secrets: SERVER_HOST, SERVER_USER, SERVER_SSH_KEY.
 - The NSIS config in desktop/package.json is already correct.
 - To trigger: git tag desktop-v1.2.0 && git push origin desktop-v1.2.0
-
-
 ## [6.39.3] — 2026-05-11
 
 ### Site: all blog posts now have TOC sidebar and consistent layout
@@ -1477,15 +1348,11 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
   blog-toc.js, and a sidebar CTA card.
 - H2 headings now have id="s-*" anchors so TOC links work correctly.
 - All code blocks confirmed styled with .code-block structure.
-
-
 ## [6.39.2] — 2026-05-11
 
 ### Fix: about page LinkedIn URL and founder name corrected
 - LinkedIn URL updated to https://www.linkedin.com/in/michale-mccarthy-b7a2ab8b/
 - Founder name corrected to Michael McCarthy.
-
-
 ## [6.39.1] — 2026-05-11
 
 ### Site: about page rewritten with real content
@@ -1527,15 +1394,11 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
   .tok-fn, .tok-st, .tok-cm etc.) defined once in site-shared.css.
 - Token colours: keywords #bb9af7, functions #7aa2f7, strings #9ece6a,
   comments #565f89 italic, numbers #ff9e64, operators #89ddff.
-
-
 ## [6.39.0] — 2026-05-11
 
 ### Versioning convention change
 - Patch number resets to 0 when it reaches 100; middle number increments.
   6.38.1001 → 6.39.0. Next rollover: 6.39.100 → 6.40.0.
-
-
 ## [6.38.1000] — 2026-05-11
 
 ### Feature: in-app update download and relaunch (desktop app)
@@ -1573,8 +1436,6 @@ All of the above applied to both main vault domain and admin subdomain CSPs.
   windows, linux, linux_deb, mac, mac_arm64. These come from the HV_DESKTOP_DOWNLOADS
   map (DL_* env vars) so they're always the same files the /download route serves.
   The desktop app uses these directly for in-app download — no URL construction needed.
-
-
 ## [6.38.999] — 2026-05-11
 
 ### Fix: download page redirected to home page — two causes
@@ -1597,8 +1458,6 @@ Changed the default to /static/releases/HexVault-1.0.0-Windows-x64-portable.zip
 which is the zip that rebuild-desktop.sh actually produces on Linux.
 The DL_WINDOWS env var overrides this — set it to whatever filename your
 build produces.
-
-
 ## [6.38.998] — 2026-05-11
 
 ### Fix: app-builder binary also lacked execute permission
@@ -1606,8 +1465,6 @@ build produces.
   electron-builder internally) had the same issue. Now chmod +x covers
   electron-builder, app-builder for both x64 and arm64, and all binaries
   in node_modules/.bin in one pass.
-
-
 ## [6.38.997] — 2026-05-11
 
 ### Fix: electron-builder Permission denied on Linux
@@ -1615,8 +1472,6 @@ build produces.
   systems, causing "Permission denied" when the build script tries to run it.
 - rebuild-desktop.sh now runs chmod +x node_modules/.bin/electron-builder
   immediately after npm install.
-
-
 ## [6.38.996] — 2026-05-11
 
 ### Fix: rebuild-desktop.sh was silencing all electron-builder errors
@@ -1626,8 +1481,6 @@ build produces.
   was silently discarded, causing "AppImage not built" with no explanation.
 - Removed all grep filters — electron-builder output now prints in full.
   Failures are immediately visible without guessing.
-
-
 ## [6.38.995] — 2026-05-11
 
 ### Fix: rebuild-desktop.sh Python heredoc caused SyntaxError
@@ -1651,8 +1504,6 @@ build produces.
   If either is missing it attempts sudo apt-get install automatically and
   reports the result. Build continues so Windows portable zip is still
   produced even if Linux deps are absent.
-
-
 ## [6.38.994] — 2026-05-11
 
 ### Fix: /api/desktop-version never hardcoded — always reads package.json
@@ -1681,8 +1532,6 @@ build produces.
   WIN_ZIP_VER=$(node -p "require('./package.json').version")
   HexVault-\${WIN_ZIP_VER}-Windows-x64-portable.zip
 - The example git tag warning also uses the package.json version.
-
-
 ## [6.38.993] — 2026-05-11
 
 ### Feature: launch on login + start minimised (desktop app)
@@ -1735,8 +1584,6 @@ build produces.
 - Lock Vault and Check for Updates pass --lock and --check-updates as argv;
   handleArgv() processes these in both the second-instance handler (app already
   running) and on fresh launch.
-
-
 ## [6.38.992] — 2026-05-11
 
 ### Feature: update notifications across all surfaces
@@ -1774,8 +1621,6 @@ build produces.
   to propagate) — if a security fix is pushed, users get a nudge immediately.
 - Both /api/vault-version and /api/extension-version are added to the auth
   exemption list (no session required).
-
-
 ## [6.38.991] — 2026-05-11
 
 ### Feature: window state persistence (desktop app)
@@ -1828,8 +1673,6 @@ build produces.
   - "Sign out of Quick Unlock" button with confirmation
   - Current state populated from desktop:capabilities on each settings open.
   Previously these settings were only accessible via the tray menu.
-
-
 ## [6.38.990] — 2026-05-11
 
 ### Feature: Quick Unlock with Touch ID / biometric (desktop app)
@@ -1880,8 +1723,6 @@ build produces.
 - New: desktop/main.js reads/writes userData/hv_prefs.json (bgSync, biometricEnabled).
 - New: userData/hv_session.enc (safeStorage-encrypted session marker).
 - Both are in Electron's userData directory — not in the app bundle.
-
-
 ## [6.38.989] — 2026-05-11
 
 ### Security fix: desktop app had CORS enforcement disabled
@@ -1909,8 +1750,6 @@ build produces.
   and only writes a fallback if the file is genuinely missing (e.g. corrupted
   build output). Normal operation never hits the write path.
 - Removed unused child_process require (cp was imported but never called).
-
-
 ## [6.38.988] — 2026-05-11
 
 ### Fix: folder sidebar was unusable on mobile — always visible at full width
@@ -1950,8 +1789,6 @@ build produces.
 - Confirmed: fetch handler, network-first API strategy, stale-while-revalidate
   for assets, and offline fallback are all correctly implemented — sw.js had
   a complete routing strategy, just the version and asset list were stale.
-
-
 ## [6.38.987] — 2026-05-11
 
 ### Fix: login error messages not announced to screen readers
@@ -1994,8 +1831,6 @@ build produces.
   computes the diff and colours it green (improvement) or red (regression).
   For the Breaches card the colouring is inverted — up is bad, down is good.
   Delta line is hidden when the value is unchanged.
-
-
 ## [6.38.986] — 2026-05-11
 
 ### Feature: last sign-in banner on vault open
@@ -2032,8 +1867,6 @@ build produces.
   is false. The "Resend email" button calls /api/resend-verification.
   Section is hidden for verified users. Checks email_verified live from
   /api/profile each time settings opens.
-
-
 ## [6.38.985] — 2026-05-11
 
 ### Security fix: login now enforces email verification
@@ -2070,8 +1903,6 @@ build produces.
   after copying would regularly find the clipboard already cleared.
 - New default is 60s. Configurable via CLIPBOARD_CLEAR_SECONDS env var.
   Users who want the stricter 30s can set it in their account preferences.
-
-
 ## [6.38.984] — 2026-05-11
 
 ### Security fix: IDOR in /api/breach/scan allows writing to other users' passwords
@@ -2110,8 +1941,6 @@ build produces.
   calls with no error handling — a network failure would throw an unhandled
   promise rejection with no user feedback.
 - All three now wrapped in try/catch with a generic 'Request failed' toast.
-
-
 ## [6.38.983] — 2026-05-11
 
 ### Fix: dead first loadPasswords() definition removed
@@ -2149,8 +1978,6 @@ build produces.
 - 139 buttons remain without explicit label but all have visible text content
   (tab buttons, submit/cancel buttons with text) — these are accessible via
   their text content and do not require aria-label.
-
-
 ## [6.38.982] — 2026-05-11
 
 ### Fix: peek-password button was silently broken
@@ -2197,8 +2024,6 @@ build produces.
 - vault-improvements.js injects hv-hl CSS inline but it wasn't in style.css,
   so the highlight colour could flash in before the style was injected. Added
   mark.hv-hl to style.css as a stable baseline.
-
-
 ## [6.38.981] — 2026-05-11
 
 ### Fix: dead first showVault() definition removed
@@ -2236,8 +2061,6 @@ build produces.
 - Direct install links for Chrome (live), Firefox (pending), and Edge
   (pending) with browser-appropriate icons
 - Shows "checking..." extension connection status placeholder
-
-
 ## [6.38.980] — 2026-05-11
 
 ### Fix: renderPasswords crash in Recently Used folder
@@ -2254,8 +2077,6 @@ build produces.
   60 seconds
 - loadPasswords() now resets _scoreChipLastFetch = 0 at the start so
   the next updateStats() call always fetches a fresh score
-
-
 ## [6.38.979] — 2026-05-11
 
 ### Fix: copy-password and copy-username action buttons did nothing
@@ -2288,8 +2109,6 @@ build produces.
   back to All Passwords
 - Now checks getCurrentVirtualFolder() and applies the recent-sort logic
   inline when the Recent virtual folder is active
-
-
 ## [6.38.978] — 2026-05-11
 
 ### Fix: modals now correctly stop vault-wrapper from scrolling in background
@@ -2307,8 +2126,6 @@ build produces.
 ### UX: keyboard shortcuts ? button added to header
 - Small ? button next to the score chip opens the shortcuts modal
 - Provides discoverability for users who don't know the ? key shortcut
-
-
 ## [6.38.977] — 2026-05-11
 
 ### Feature: last_used date shown on each vault entry
@@ -2346,8 +2163,6 @@ build produces.
 - "Failed to copy password" → clipboard permission hint
 - "Connection failed" → consistent actionable copy
 - "Encryption key derivation failed" → explains wrong password or expired session
-
-
 ## [6.38.976] — 2026-05-11
 
 ### Fix: onboarding modal guidance pointing at wrong field IDs
@@ -2358,8 +2173,6 @@ build produces.
 - All 8 spotlight step targets also verified: addPasswordBtn, importExportBtn,
   quickGenToggleBtn, openHexGuardBtn, searchInput, userBadgeBtn,
   emergencyLockBtn, iamTeamBtn — all present and correct
-
-
 ## [6.38.975] — 2026-05-11
 
 ### Fix: scroll "not working" — vault layout changed to proper app-shell pattern
@@ -2378,8 +2191,6 @@ build produces.
   overrides that would have fought the new layout.
 - lockBodyScroll/unlockBodyScroll updated to save/restore vault-wrapper.scrollTop
   instead of window.scrollY when vault is active.
-
-
 ## [6.38.974] — 2026-05-11
 
 ### Fix: scroll still broken — two more html overflow-x:hidden rules missed
@@ -2390,8 +2201,6 @@ build produces.
 - Split both combined selectors: html gets overflow-x:clip, body keeps
   overflow-x:hidden
 - All four html overflow-x rules in style.css now use clip
-
-
 ## [6.38.973] — 2026-05-11
 
 ### Overhaul: user vault onboarding tour
@@ -2423,8 +2232,6 @@ build produces.
   (mandatory 2FA is most impactful) steps
 - Outro card gives concrete first actions: invite a member + enable 2FA policy
 - Replay button still wired in Account section
-
-
 ## [6.38.972] — 2026-05-11
 
 ### Feature: full onboarding flow rewrite (vault)
@@ -2457,8 +2264,6 @@ build produces.
 - Keyboard navigation: Arrow keys + Enter, Escape to close
 - Replay button wired to Account section
 - Reset support via ?reset_tour=1 URL param
-
-
 ## [6.38.971] — 2026-05-11
 
 ### Feature: onboarding tour guides user through Add Entry modal
@@ -2476,8 +2281,6 @@ build produces.
 - Clicking Done or closing the modal advances the tour to the next spotlight step
 - Hint text on the Add Password step updated: "Click it to try adding a password
   now — we'll guide you through" (instead of generic "button is live" copy)
-
-
 ## [6.38.970] — 2026-05-11
 
 ### Fix: mouse scroll not working — html overflow-x:hidden stealing scroll in Firefox
@@ -2492,8 +2295,6 @@ build produces.
 - Fix: changed overflow-x:hidden to overflow-x:clip on both html rules.
   overflow-x:clip prevents horizontal overflow without creating a new scroll
   container, so body remains the scroll container in all browsers.
-
-
 ## [6.38.969] — 2026-05-08
 
 ### Fix: scroll broken — removed position:fixed from lockBodyScroll
@@ -2508,8 +2309,6 @@ build produces.
   inline styles for safety, but position:fixed is no longer the mechanism.
 - This eliminates the entire class of "body stays fixed after modal closes"
   bugs regardless of observer timing or dynamic modal edge cases.
-
-
 ## [6.38.968] — 2026-05-08
 
 ### Fix: vault scroll STILL broken — second showVault definition
@@ -2521,8 +2320,6 @@ build produces.
   body.style.overflow and body.style.paddingRight but NOT position, top, or
   width — so position:fixed and top:-Ypx remained on the body after every login.
 - Applied the full unlockBodyScroll() call to the active (second) definition.
-
-
 ## [6.38.967] — 2026-05-08
 
 ### Fix: vault scroll permanently broken — definitive fix
@@ -2547,8 +2344,6 @@ build produces.
   forgot PRO — the Most Popular badge on PRO is position:absolute (outside
   flow) so it doesn't push content down, meaning PRO also needed the spacer.
   Added 20px spacer div before pc-name on the PRO card.
-
-
 ## [6.38.966] — 2026-05-08
 
 ### Fix: pricing numbers not at the same height (£6.99 and £8.99 lower)
@@ -2563,8 +2358,6 @@ build produces.
 ### Fix: Permissions-Policy interest-cohort header warning
 - interest-cohort is also now unrecognised in current Chrome — removed it
   along with the other Privacy Sandbox directives removed in v6.38.964
-
-
 ## [6.38.965] — 2026-05-08
 
 ### Fix: /api/login 500 error caused by Redis connection failure
@@ -2586,8 +2379,6 @@ build produces.
   impossible to scroll
 - showVault() now calls window.unlockBodyScroll() which clears all five inline
   styles, and also resets document.body._modalLocked = false
-
-
 ## [6.38.964] — 2026-05-08
 
 ### Fix: login form autocomplete attributes
@@ -2612,8 +2403,6 @@ build produces.
   run-ad-auction, browsing-topics, attribution-reporting) that were logging
   "Unrecognised feature" warnings in the console on Chrome — kept only the
   stable interest-cohort directive
-
-
 ## [6.38.963] — 2026-05-08
 
 ### Fix: vault scroll still broken after lock
@@ -2630,16 +2419,12 @@ build produces.
   and /mo span share a common baseline regardless of size difference
 - Added align-self:flex-end + padding-bottom:2px to .pc-price span so /mo
   sits neatly at the bottom of the price number
-
-
 ## [6.38.962] — 2026-05-08
 
 ### Fix: duplicate login() function removed
 - script.js had two identical 8877-char login() definitions at lines 1034 and 8243
 - Removed the first copy; single authoritative definition remains
 - Node --check clean, 10572 lines, 0 brace depth
-
-
 ## [6.38.961] — 2026-05-08
 
 ### Fix: script.js SyntaxError — Unexpected identifier 'Invitation'
@@ -2657,8 +2442,6 @@ build produces.
 ### Fix: Login form native submission
 - Removed action="/api/login" and method="post" from the login form so it
   cannot fall back to native browser form submission if JS is slow to attach
-
-
 ## [6.38.960] — 2026-05-08
 
 ### Fix: Login returns raw JSON instead of showing 2FA input
@@ -2667,8 +2450,6 @@ build produces.
   returned raw JSON, and the page showed the JSON instead of the 2FA field
 - Removed action and method attributes entirely so native submission is impossible
 - The JS submit listener (e.preventDefault + login()) is the only submission path
-
-
 ## [6.38.958] — 2026-05-08
 
 ### Fix: /api/login 400 — Username and password required
@@ -2676,15 +2457,11 @@ build produces.
   and logs the raw body + Content-Type when both are empty
 - Uses get_json(force=True, silent=True) then request.form fallback
 - If body is still empty after both attempts, logs full raw body for diagnosis
-
-
 ## [6.38.957] — 2026-05-08
 
 ### Debug: login 400 — log Content-Type and body preview when JSON parse fails
 - Added warning log: Content-Type and first 200 chars of body when get_json returns None
 - Check server logs after a failed login to see what the client is actually sending
-
-
 ## [6.38.956] — 2026-05-08
 
 ### Fix: 415 Unsupported Media Type on login
@@ -2693,8 +2470,6 @@ build produces.
 - Fixed /api/login and /api/admin/login to use request.get_json(force=True, silent=True)
   which reads the JSON body regardless of Content-Type header
 - silent=True means it returns None (not an error) if the body isn't valid JSON
-
-
 ## [6.38.955] — 2026-05-08
 
 ### Fix: Vault scroll broken
@@ -2711,8 +2486,6 @@ build produces.
   on top of the existing ones, causing conflicts and unpredictable behaviour
 - Removed the first duplicate; only one renderPasswords() now exists
 - Added user-select:none to .password-item[draggable="true"] for smoother drag initiation
-
-
 ## [6.38.954] — 2026-05-08
 
 ### Fix: 7 admin portal functions missing — buttons silently failing
@@ -2723,15 +2496,11 @@ build produces.
   during the exec report HTML builder work earlier in this session
 - Restored all 7 functions with full API calls, error handling, and button wiring
   matching the HTML structure in admin.html
-
-
 ## [6.38.953] — 2026-05-08
 
 ### Fix: column ob.initiated_at does not exist
 - offboarding_records uses created_at not initiated_at as its timestamp column
 - Fixed in query SELECT/ORDER BY and ob_html row builder d.get() and tuple dict key
-
-
 ## [6.38.952] — 2026-05-08
 
 ### Fix: column lra.created_at does not exist — still present in 6.38.951
@@ -2742,8 +2511,6 @@ build produces.
 ### Fix: Executive report fails to download
 - orgName, nowStr, nowTime variables were used in the HTML builder but never declared
 - Added declarations after the other var statements in the click handler
-
-
 ## [6.38.951] — 2026-05-08
 
 ### Fix: column created_at does not exist in login_risk_assessments
@@ -2751,8 +2518,6 @@ build produces.
 - Fixed in 4 places: compliance report login_risk query, compliance report
   member risk count subquery, executive report risk_logins query, executive
   report member_detail subquery
-
-
 ## [6.38.950] — 2026-05-08
 
 ### Fix: Compliance report 500 — NameError: member_device_counts not defined
@@ -2764,8 +2529,6 @@ build produces.
 ### Fix: Executive report 500 — exception swallowed silently
 - Exec report except block only returned str(e) with no traceback
 - Updated to log and return full traceback so errors are visible in Network tab
-
-
 ## [6.38.949] — 2026-05-08
 
 ### Fix: admin-intelligence.js SyntaxError — unexpected end of input
@@ -2787,16 +2550,12 @@ build produces.
 - Chrome's Privacy Sandbox was trying to use join-ad-interest-group on admin pages
 - Added explicit opt-outs: join-ad-interest-group, run-ad-auction, browsing-topics,
   attribution-reporting, interest-cohort all set to () in Permissions-Policy
-
-
 ## [6.38.948] — 2026-05-08
 
 ### Redesign: Executive Security Report — premium two-page design
 - Cover page: dark hero with grid texture, stacked headline, 4 KPI cards (score/2FA/breached/30d change) with severity colouring, narrative grade badge, real SVG score trend chart (30-day line with area fill and target-70 dashed line, built from live trend data), 3-card risk breakdown (Low/Medium/High member counts), incident summary banner
 - Page 2: data-driven findings (high-risk members, breach count, incidents, MFA gaps surface as Critical/Medium/Advisory), member risk summary table (score, risk tier, 2FA, breached, risk logins, last active — sorted worst first), ZK attestation block, page footer
 - /api/admin/executive-report?format=json enriched: added trend[] array, members[] per-member detail, high_risk_members, medium_risk_members, low_risk_members, risk_login_count, active_members, mfa_adoption, breached_passwords
-
-
 ## [6.38.947] — 2026-05-08
 
 ### Enhancement: Compliance report — enriched with 4 new security data sources (5 pages)
@@ -2805,8 +2564,6 @@ build produces.
 - Page 5 (previously page 4): executive findings now data-driven from real risk signals, sign-off block
 - Member roster updated to include Devices column and Risk logins column per member
 - Fix: IP addresses no longer truncated — full IPv4/IPv6 addresses shown throughout
-
-
 ## [6.38.946] — 2026-05-08
 
 ### Fix: Report buttons blocked by CSP — inline script hashes added
@@ -2820,8 +2577,6 @@ build produces.
   (the 4-page org compliance report) instead of the executive summary
 - Fixed: now fetches /api/admin/executive-report?format=json and renders a premium
   client-side HTML exec report with dark cover, KPI grid, grade badge, and score trend
-
-
 ## [6.38.945] — 2026-05-08
 
 ### Fix: Compliance report still serving debug stub
@@ -2832,8 +2587,6 @@ build produces.
 - The HTML is built with H += '...' + variable + '...' throughout
 - CSS built as a single concatenated string constant
 - Verified: stub gone, dark cover present, 4 pages present, syntax OK
-
-
 ## [6.38.944] — 2026-05-08
 
 ### Fix: Compliance report 500 — TypeError: unhashable type: 'dict'
@@ -2844,16 +2597,12 @@ build produces.
 - Fix: split into resp = Response(html, mimetype='text/html') then 
   resp.headers['Content-Disposition'] = f'...' on a separate line
 - Same { } issue in the except jsonify() call also fixed
-
-
 ## [6.38.943] — 2026-05-08
 
 ### Debug: Global error handler now returns full error type + traceback
 - handle_unhandled_exception now returns error type, path, and full trace in JSON
 - This will show exactly what exception escapes the view function
 - Deploy and check Network tab response body for 'error', 'type', 'trace' fields
-
-
 ## [6.38.942] — 2026-05-08
 
 ### Fix: CSP blocking report iframe with blob: URL
@@ -2868,8 +2617,6 @@ build produces.
 ### Fix: Restored full compliance report function after debug stripping
 - v6.38.941 had the function stripped to a 3-query minimum for debugging
 - Full function restored with all queries, HTML template, configure buttons, and step tracking
-
-
 ## [6.38.941] — 2026-05-08
 
 ### Debug: Strip compliance report to minimum to isolate 500 error
@@ -2877,24 +2624,18 @@ build produces.
 - If this works: the error is in one of the complex queries (score_history, security_events, audit_log)
 - If this still 500s: the error is at Flask/Response level, not in the queries
 - Error response now returns raw str(e) + trace without going through global handler
-
-
 ## [6.38.940] — 2026-05-07
 
 ### Fix: Global error handler was swallowing compliance report traceback
 - @app.errorhandler(Exception) was intercepting all unhandled exceptions and returning only request_id
 - Was logging traceback at log.debug (not visible in production) — changed to log.error
 - Response now includes 'detail' and 'trace' fields so the actual error is visible in Network tab
-
-
 ## [6.38.939] — 2026-05-07
 
 ### Debug: Compliance report — step-level error tracking
 - Added _step variable tracking before every DB query and data processing stage
 - 500 response now includes 'step' and 'trace' fields showing exactly where it fails
 - Check Network tab response body for step + trace fields
-
-
 ## [6.38.938] — 2026-05-07
 
 ### Fix: Old ReportLab compliance report still serving from /api/org/compliance-report
@@ -2904,16 +2645,12 @@ build produces.
 
 ### Debug: admin/compliance-report 500 still exposes traceback in response body
 - Check Network tab → response body → 'trace' field to see exact Python error
-
-
 ## [6.38.937] — 2026-05-07
 
 ### Debug: Compliance report 500 — expose full traceback in response
 - Improved error handler to return 'trace' field in the 500 JSON response
 - This will show the exact Python error and line number when you next hit the 500
 - Check the browser Network tab → response body for the 'trace' field
-
-
 ## [6.38.936] — 2026-05-07
 
 ### Fix: Compliance report 500 — NameError: Response not defined
@@ -2924,8 +2661,6 @@ build produces.
 - The PDF export button in the security dashboard uses data-action="exportSecurityPDF"
 - event-handlers.js caught the click and called exportSecurityPDF() which was never defined anywhere (the actual function is generateSecurityPDF in script.js)
 - Fixed event-handlers.js to call generateSecurityPDF() first, falling back to exportSecurityPDF() for compatibility
-
-
 ## [6.38.934] — 2026-05-07
 
 ### Fix: Compliance report Review items now link directly to admin portal settings
@@ -2935,8 +2670,6 @@ build produces.
 - Geo-Blocking Not enabled: "Configure" button navigates to Organisation section (data-nav=organisation)
 - Buttons appear both in the Controls table (page 2) and in the Executive Findings cards (page 4)
 - Clicking a button navigates the parent admin portal to the correct section and closes the report iframe
-
-
 ## [6.38.933] — 2026-05-07
 
 ### Redesign: Executive Security Report — matched preview exactly
@@ -2954,8 +2687,6 @@ build produces.
 - Page 3: Security events table, credential access log table
 - Page 4: Executive findings with severity cards, formal sign-off block with org/date/retention/classification
 - admin-panel.js: opens report in full-page iframe instead of downloading, with Escape/Close button dismiss
-
-
 ## [6.38.932] — 2026-05-07
 
 ### Redesign: Executive Security Report — complete rebuild
@@ -2965,8 +2696,6 @@ build produces.
 - Page 2: section header with purple badge, findings block with properly styled CRITICAL/HIGH/MEDIUM/ADVISORY severity cards, full credential table with dark header row and alternating rows, ZK attestation block, page footer
 - Print CSS: A4 paper size, the print bar hides on print, layout designed to print cleanly to PDF at standard margins
 - Typography: Inter for body, IBM Plex Mono for numbers and code — professional but distinctive
-
-
 ## [6.38.931] — 2026-05-07
 
 ### Fix: Admin compliance report 500 error (still broken after v6.38.930)
@@ -2977,8 +2706,6 @@ build produces.
 - Team card had both the inline "Most popular for teams" badge AND the pc-pop highlighted card class (same as Pro), making two cards look equally prominent
 - Removed pc-pop from Team card, added pc-team-pop with teal/emerald accent instead
 - Added "per user — team billing" sub-line under the £8.99/seat price to clarify it is a per-seat business price, not comparable to the flat-rate individual plans
-
-
 ## [6.38.930] — 2026-05-07
 
 ### Fix: Full Compliance Report 500 error
@@ -2996,8 +2723,6 @@ build produces.
 - Zero-knowledge attestation block with lock icon
 - Print-safe CSS: switches to light background on @media print for clean PDF output
 - Iframe Close button posts message to parent window for clean dismissal
-
-
 ## [6.38.929] — 2026-05-07
 
 ### Fix: Vault scroll completely broken
@@ -3018,15 +2743,11 @@ build produces.
 - API: POST /api/passwords/reorder with unnest() bulk update, @require_auth protected
 - Vault GET queries updated to ORDER BY sort_order ASC
 - Frontend: drag indicator line, immediate DOM reorder, 800ms debounced API save
-
-
 ## [6.38.928] — 2026-05-07
 
 ### Fix: Add Entry modal — type-specific fields (Card, Bank, SSH etc.) never appeared
 - Root cause: injectExtraFields() used notesToggleBtn.closest('.pm-row') as its insertion anchor, but notesToggleBtn lives inside a .pm-field not a .pm-row, so closest() returned null and the function bailed out immediately — the entire extra fields container (card number, expiry, CVV, sort code, IBAN, SSH keys, API token fields, etc.) was never injected into the DOM
 - Fix: anchor is now notesToggleBtn.parentElement, and the container is inserted immediately before that element in its parent node — reliable regardless of whether the parent is .pm-row, .pm-field, or any other class
-
-
 ## [6.38.927] — 2026-05-07
 
 ### Fix: Vault scroll broken — entries clipped to viewport height
@@ -3036,45 +2757,33 @@ build produces.
 - vault-tab-content.active: removed flex:1 and min-height:350px so it sizes to its content
 - vault-main: added min-height:0 as a flex child safeguard, kept flex:1 for width
 - All overflow properties remain visible so body handles scroll as intended
-
-
 ## [6.38.926] — 2026-05-07
 
 ### Fix: Mouse wheel scroll not working in vault
 - Root cause: .vault-tab-content.active had overflow-y: auto with flex:1, making the tab panel itself a scroll container instead of letting content expand into the page. The body never grew tall enough to scroll.
 - Fix: changed overflow-y to visible on .vault-tab-content.active so the flex chain grows naturally and body handles scroll (as intended per the comment at line 383)
 - Removed duplicate override block at line 14447 that was patching the same issue but fighting the min-height:350px in the base rule
-
-
 ## [6.38.925] — 2026-05-07
 
 ### Fix: Emoji removed from all user-visible strings across app
 - Removed emoji from 19 files: landing.html, ai-transparency.html, app.py, extension-preview.html, and 14 static JS/CSS files
 - Replaced status emoji (✅❌🟢🟡🔴) with plain text equivalents ([OK], [Warn], [Error], OK, Error)
 - Removed decorative emoji (🔐📦🔗👤⏰💡🔒) where they appeared in UI strings
-
-
 ## [6.38.924] — 2026-05-07
 
 ### Fix: Add Entry modal URL placeholder wrong per entry type
 - URL input had hardcoded placeholder "https://netflix.com" regardless of entry type
 - Added urlPlaceholder as 7th element in TYPE_LABELS for all 8 entry types (bank uses bank URL, SSH uses git@ format, API token uses API endpoint format, etc.)
 - switchType() in entry-types.js now updates the URL input placeholder alongside the label text
-
-
 ## [6.38.923] — 2026-05-07
 
 ### Landing page: extension section removed
 - Removed remaining extension CTA strip from landing.html (Extension is in the nav and footer)
-
-
 ## [6.38.922] — 2026-05-07
 
 ### Fix: Vault layout broken after Authenticator tab addition
 - Root cause: Authenticator nav button was inserted outside its parent iam-sidebar-section div, with an extra orphaned closing div tag. This broke the entire vault layout — the folder sidebar, vault content area, and scroll were all displaced
 - Fix: moved the button correctly inside the iam-sidebar-section div containing Passwords, Secure Notes, and Shared With Me
-
-
 ## [6.38.921] — 2026-05-07
 
 ### New feature: Authenticator tab in vault
@@ -3086,8 +2795,6 @@ build produces.
 - Wired into the existing IAM nav system (switchIamTab('authenticator')), tab-navigation.js, and vault:loaded event
 - All TOTP generation uses existing window.TOTP.generateCode — no new crypto code
 - New file: static/authenticator.js
-
-
 ## [6.38.920] — 2026-05-07
 
 ### Fix: CSP report handler crash on Reporting API v2
@@ -3095,21 +2802,15 @@ build produces.
 - Fix: normalise the incoming payload to a flat list of report dicts before processing. Handles all three formats: Reporting API v2 array, classic report-uri dict with csp-report key, and bare dict
 - Also added camelCase field aliases (documentURL, violatedDirective, blockedURL, etc.) used by the Reporting API v2 body format alongside the classic hyphenated names
 - Each report in a batched array is now inserted as a separate row
-
-
 ## [6.38.919] — 2026-05-07
 
 ### Blog: removed stale coming-soon duplicate
 - Removed "Building multi-party approval in Flask" coming-soon placeholder — the post went live as Post 5 but the placeholder was never cleared, causing it to appear twice on the blog listing page
-
-
 ## [6.38.918] — 2026-05-07
 
 ### Site: Patent Pending added
 - Added "Patent Pending" to the footer bottom line across all 31 pages
 - Footer bottom now reads: hexvault.co.uk — Built in the UK · Patent Pending
-
-
 ## [6.38.917] — 2026-05-07
 
 ### Site: unified across all pages
@@ -3125,8 +2826,6 @@ build produces.
 - Extension added to desktop nav bar (was already in mobile drawer, now consistent)
 - Large dedicated extension section replaced with a compact CTA strip: headline, one-line feature summary, Install Chrome Extension button, and "See all features →" link to /extension
 - Full extension detail page remains at /extension (linked from nav, footer, and CTA)
-
-
 ## [6.38.916] — 2026-05-07
 
 ### Extension preview: major improvements
@@ -3154,8 +2853,6 @@ The main popup is now a single interactive demo: search filters the list, catego
 
 **Settings toggles fixed**
 Stay unlocked toggle added. All toggles animate correctly (CSS on/off states).
-
-
 ## [6.38.915] — 2026-05-07
 
 ### Fix: blog duplicates, footer links, mobile nav
@@ -3170,15 +2867,11 @@ Applied consistent footer with Enterprise, Extension, Press, Trust, FAQ links ac
 Rewrote `nav-drawer.js` with the position:fixed scroll lock (matching the working implementation in `landing-billing.js`). `overflow:hidden` on body is ignored by iOS Safari — the fix saves `window.scrollY`, sets `body { position:fixed; top:-Npx }` on open, and restores the scroll position on close.
 
 Added `navOverlay` element to all 22 static site pages that were missing it — required for tap-outside-to-close on mobile.
-
-
 ## [6.38.914] — 2026-05-06
 
 ### Fix: duplicate blog_post_mpa route
 
 Removed duplicate @app.route for blog_post_mpa which caused Flask AssertionError on startup. Only the correct /blog/building-multi-party-approval-flask route remains.
-
-
 ## [6.38.913] — 2026-05-06
 
 ### New blog post: Building multi-party approval in Flask
@@ -3188,8 +2881,6 @@ URL: `/blog/building-multi-party-approval-flask`
 14-minute technical post covering HexVault's full MPA implementation: database schema (pending_actions, pending_action_votes, org_approval_policies), the MPA_ACTIONS registry, create_pending_action with auto-initiator vote, the vote endpoint, quorum/execution logic, auto-expiry scheduler, and four edge cases (race condition on quorum, single-admin org problem, cascade on member removal, replay after rejection). Includes real code from app.py throughout.
 
 Also fixed: blog index updated (removed coming-soon placeholder, added live post card), sitemap updated, blog route registered.
-
-
 ## [6.38.913] — 2026-05-06
 
 ### New blog post: Building multi-party approval in Flask
@@ -3199,8 +2890,6 @@ URL: `/blog/building-mpa-flask` — 14 min read
 Covers HexVault's full MPA implementation drawn from real app.py code: the two-table PostgreSQL schema (pending_actions + pending_action_votes), how to prevent double execution with atomic increment + two-stage status transition, self-approval prevention, double-vote prevention via unique constraint, org scoping, expiry sweep, and what MPA means differently in a zero-knowledge system where the server can't read what it's approving.
 
 Also fixed: footer and nav missing links for /enterprise, /extension, /press were added to landing.html.
-
-
 ## [6.38.912] — 2026-05-06
 
 ### Fix: footer and nav links for new pages
@@ -3210,15 +2899,11 @@ Added missing links to `/enterprise`, `/extension`, `/press`, and `/blog` in:
 - Mobile nav drawer
 
 All new pages were already built and routed (6.38.910) but were unreachable from the site navigation.
-
-
 ## [6.38.911] — 2026-05-06
 
 ### Removed fake aggregateRating from JSON-LD
 
 Removed a fabricated `aggregateRating` object (`4.8 stars, 12 reviews`) from the landing page JSON-LD structured data. HexVault is in early access with no public reviews — submitting false rating data to search engines is deceptive and a Google Search Console policy violation.
-
-
 ## [6.38.910] — 2026-05-06
 
 ### Site additions: all 8 missing elements built
@@ -3246,8 +2931,6 @@ Three new items added to the NOW column: Compliance Reports (Enterprise), Admin 
 
 **8. Footer links updated across all pages**
 All blog posts, the blog index, and the three new pages now have footers including `/enterprise`, `/extension`, `/press` in the Product/Company columns.
-
-
 ## [6.38.909] — 2026-05-06
 
 ### Website: what's-new strip updated + new blog post
@@ -3263,8 +2946,6 @@ Covers the full email layer audit: 64 call sites, 26 functions, 8 bugs. Topics i
 Post is fully mobile-responsive: fluid type with `clamp()`, responsive two-column layout that stacks to single column at 900px, mobile hamburger nav with drawer (iOS scroll lock), responsive bug table with horizontal scroll on small screens, related posts grid that stacks to single column at 640px, sticky sidebar TOC hidden on mobile, touch-action and overscroll-behavior set on all scrollable containers.
 
 Flask route added: `GET /blog/transactional-email-zero-knowledge-saas`
-
-
 ## [6.38.908] — 2026-05-06
 
 ### Compliance report rebuilt + offboard-info 404 fixed
@@ -3285,8 +2966,6 @@ Section headers use a dark band with a solid brand-purple left border. Page foot
 
 **offboard-info 404 fixed**
 `_is_admin_host()` was checking only `request.host`. Under Cloudflare/Traefik the actual host can arrive in `X-Forwarded-Host` or `X-Original-Host` instead. The function now checks all three headers, stopping at the first match.
-
-
 ## [6.38.907] — 2026-05-06
 
 ### Offboarding notification: fully wired end to end
@@ -3309,8 +2988,6 @@ The vault JS polled for notifications every 75s — which means the offboard ban
 5. Next time user makes any authenticated request → 401 (session invalidated) → vault calls `logout()` → page reloads → login page
 6. User logs back in → `showVault()` calls `/api/me/status` at t+800ms → pending warning found → `showWarningNotification()` fires immediately → amber banner: "Your access to [Org] has been suspended — Reason: [reason]. Your personal vault is unaffected."
 7. The 75s notification poll also catches it as a backup
-
-
 ## [6.38.906] — 2026-05-06
 
 ### Email function audit: all send_ calls fixed
@@ -3334,8 +3011,6 @@ Complete audit of all 64 `send_*` calls in `app.py` against `email_service.py` f
 `send_breach_alert_email` — passed an extra `int` as 3rd arg and the `breached_passwords` list as 4th, but the function takes only 3 args (`to_email, username, breached_items` list). Fixed: the int is removed and the list is passed directly.
 
 `send_mpa_notification` — passed `action_id` (an int) as `approve_url`. The "Review & Approve" button showed a raw integer. Fixed: now passes the admin portal approvals URL.
-
-
 ## [6.38.905] — 2026-05-06
 
 ### Admin portal invite: email sending + domain restriction
@@ -3351,8 +3026,6 @@ Orgs can now lock invitations to approved email domains. A new "Restrict invites
 
 **UX: invite link always shown after send**
 The invite URL is now included in the API response and displayed in a dismissible card below the Send button, so the admin can share it manually if the transactional email is blocked or delayed.
-
-
 ## [6.38.904] — 2026-05-06
 
 ### Scroll and mobile nav fixes
@@ -3368,8 +3041,6 @@ The `MutationObserver` that adds/removes `body.modal-open` now calls `window.loc
 
 **Scrollable containers**
 Added `overscroll-behavior: contain` to `.modal-overlay`, `.modal`, `.pm-modal`, `.modal-content`, and the mobile `.folder-sidebar` so that scrolling to the end of a modal or sheet no longer chains to the background page. Added `touch-action: pan-y` to `.password-list`, `.modal-content`, `.pm-panel`, `.iam-sidebar`, `.folder-sidebar`, and `.settings-tab-content` so browsers commit immediately to vertical scrolling without waiting to disambiguate horizontal swipes.
-
-
 ## [6.38.903] — 2026-05-06
 
 ### Add Entry modal: entry type selector redesign
@@ -3385,8 +3056,6 @@ A context line below the selector updates when you switch type, giving a plain-E
 Each type's field section now shows a labelled section divider ("Card Details", "Network Details", etc.) so the dynamic fields are clearly attributed to the selected type.
 
 All JS logic (switchType, collectEntryTypeFields, populateEntryTypeFields, resetEntryTypeFields) is unchanged — purely visual.
-
-
 ## [6.38.902] — 2026-05-06
 
 ### All missing save endpoints implemented
@@ -3420,8 +3089,6 @@ Full audit of all 209 POST/PUT/DELETE fetch calls across every vault and admin J
 **Fixed save:**
 
 `POST /api/admin/org` (webhook) — `webhook_url` and `webhook_secret` were listed in `ALLOWED_COLS` but never parsed from the request body, so `saveWebhook()` always returned "Nothing to update". Added explicit parsing with URL format validation.
-
-
 ## [6.38.901] — 2026-05-06
 
 ### Complete 403 audit: all admin ID mismatches fixed
@@ -3437,8 +3104,6 @@ Systematic audit of all 25 admin routes with ID parameters, all 73 user-auth rou
 **admin-panel.js: `open-risk-modal` buttons** — changed `data-mid="'+m.id+'"` to `data-mid="'+(m.member_id||m.id)+'"` in both the member risk table (loadMemberRisk, L714) and stale accounts table (L5105). These tables previously used `m.id` (users.id) while the endpoint expected `org_members.id`.
 
 **Everything else confirmed correct** — all 12 `member_id` admin routes now use `org_members.id` consistently; all family/emergency-access routes with post-fetch ownership checks are secure; all `data-mid` sources in admin action buttons trace back to `m.member_id`; stale/bulk actions correctly use `users.id` throughout their own path.
-
-
 ## [6.38.900] — 2026-05-06
 
 ### Bug fix: admin 403s on member actions (member_id vs user_id confusion)
@@ -3457,8 +3122,6 @@ Six admin endpoints were receiving `org_members.id` from the frontend (stored in
 | `DELETE /api/admin/member/<id>/revoke-sessions` | `org_members WHERE user_id=%s` | `org_members WHERE id=%s` → resolve `user_id` |
 
 All correctly-working endpoints (`admin_remove_member`, `admin_force_password_reset`, `admin_promote_member`, `admin_blast_radius`, `admin_member_sessions`) already used `WHERE id=%s AND org_id=%s` on `org_members` — this fix brings the broken endpoints into line with the same pattern.
-
-
 ## [6.38.899] — 2026-05-06
 
 ### Fix: offboard modal never opened
@@ -3472,8 +3135,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 **Fix:**
 - Changed Modal 1 (the real modal) from `style="display:none;position:fixed;..."` to `class="modal-overlay" style="padding:20px"` so `.modal-overlay.open { display:flex }` now applies correctly
 - Removed the duplicate empty stub modal
-
-
 ## [6.38.898] — 2026-05-06
 
 ### Offboarding: member notification and admin visibility
@@ -3491,15 +3152,11 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 - `admin_get_members` query now returns `removal_reason` and `deactivated_at` from `org_members`
 
 **Personal vault access:** offboarding removes org access only (`users.org_id` set to NULL, all sessions invalidated). The user's personal vault remains fully accessible — their own encrypted credentials are unaffected
-
-
 ## [6.38.897] — 2026-05-06
 
 ### Bug fixes
 
 **Redis showing as "outage" on status page**: the uptime recorder and `/api/health` both used `redis.Redis.from_url('redis://redis:6379/0')` which ignores `REDIS_PASSWORD`. Since deploy.sh generates a random Redis password, the bare URL probe fails authentication and records the service as `down`. Fixed both probes to use `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` — the same env vars used everywhere else in the app.
-
-
 ## [6.38.896] — 2026-05-06
 
 ### Fix: server crash on startup
@@ -3507,8 +3164,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 **Bug:** `NameError: name 'require_admin_auth' is not defined` at line 2613. The SOC 2 data retention and evidence endpoints (`/api/admin/data-retention/preview`, `/api/admin/data-retention/enforce`, `/api/admin/soc2/evidence`) were inserted at line ~2608 during the SOC 2 work, which is before `require_admin_auth` is defined at line ~5683. Python evaluates decorators at module load time, so the `@require_admin_auth` decorator on those routes crashed gunicorn before any workers started.
 
 **Fix:** Moved the entire data retention + SOC 2 evidence block to line ~6753 — immediately before the admin portal routes section — where all auth decorators (`require_auth`, `require_admin_auth`, `limiter`) are already defined.
-
-
 ## [6.38.895] — 2026-05-06
 
 ### Status page rebuilt with real uptime data
@@ -3527,8 +3182,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 - Incident section — shows active incidents (red border) and last 3 resolved incidents from `status_incidents` table; hidden when no incidents
 - Auto-polls every 60 seconds; manual refresh button
 - Previously: uptime history was 100% fake random numbers regenerated on every page load
-
-
 ## [6.38.894] — 2026-05-06
 
 ### SOC 2 Readiness
@@ -3542,8 +3195,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 - **`/api/admin/soc2/evidence`**: exports structured JSON covering all Trust Service Criteria control states — feeds directly into Vanta, Drata, or Secureframe for continuous compliance monitoring
 - **Admin portal** Compliance section now has SOC 2 Evidence export button and Data Retention panel with preview + enforce
 - **`soc2-policies/README.md`**: readiness checklist showing 20 technical controls complete and 9 operational items remaining
-
-
 ## [6.38.893] — 2026-05-06
 
 ### Bug fixes
@@ -3553,8 +3204,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 ### Report quality
 - **Compliance report completely rebuilt**: now a proper 3-page enterprise PDF — cover page with brand bar and key metrics grid (avg score, 2FA%, member count, credentials), controls compliance table (10 controls with COMPLIANT/ACTION REQUIRED/REVIEW status), full member roster with per-member security score (colour coded), breach exposure table, credential access log (50 events), security event log (30 days). Dark brand theme matching HexVault design
 - **Rate limits**: compliance report 10/hr, executive report 20/hr
-
-
 ## [6.38.892] — 2026-05-06
 
 ### Offboarding
@@ -3564,8 +3213,6 @@ All correctly-working endpoints (`admin_remove_member`, `admin_force_password_re
 
 ### Vault scrolling
 - **Scrolling broken in vault**: `.vault-section` had `overflow: hidden` which clipped content at its card boundary. The vault uses `body.vault-active` as the scroll container (body has `overflow-y: auto`), so the card should be `overflow: visible` to let content flow through. Changed from `hidden` to `visible`
-
-
 ## [6.38.891] — 2026-05-06
 
 ### Complete IAM security audit
@@ -3586,8 +3233,6 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - `admin_bootstrap`: returns 404, disabled
 - `service_account_vault_read`: uses `Authorization: Bearer hvsa_<token>` — separate auth path, org-scoped via token
 - `view_shared_password`: returns client-side encrypted blob — ZK by design, no plaintext exposed
-
-
 ## [6.38.890] — 2026-05-06
 
 ### Security audit: IAM / org isolation
@@ -3609,22 +3254,16 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - `/api/dev/status`: loopback IP check — only reachable via SSH tunnel, safe
 - `/api/v1/vault`: uses `Authorization: Bearer hvsa_<token>` service account auth — safe
 - All 451 routes reviewed — no unprotected sensitive endpoints found
-
-
 ## [6.38.889] — 2026-05-06
 
 ### Security fixes
 - **Cross-org user injection via bulk add**: `admin_add_all_users_to_org` queried ALL users on the entire platform who were not already in the requesting org, and added them all. This meant any admin could pull users from other organisations into their org. Fixed: endpoint now only adds users who have NO existing org membership at all (truly unaffiliated accounts), AND whose email domain matches the org's configured `allowed_domains` list. If no allowed domains are set, the endpoint returns 400 with instructions to configure them first
 - **Personal account protection**: `admin_add_user_to_org` (single-user add by email) now also checks the user's email domain against `allowed_domains` before allowing the add. A user with `@gmail.com` cannot be added to a corporate org unless `gmail.com` is explicitly in that org's allowed domains
 - **Org isolation audit**: reviewed all admin endpoints for cross-org data leakage. All credential, member, and activity queries confirmed to filter by `request.admin_org_id`. Member-specific endpoints (`offboard_info`, `blast_radius`, `lock_member`, `remove_member`) all verify the target member belongs to the requesting admin's org before proceeding
-
-
 ## [6.38.888] — 2026-05-06
 
 ### Bug fixes
 - **500 on policy save — column admin_initiator_id does not exist**: the previous fix added a new column to pending_actions but the INSERT ran before the startup migration had a chance to add it. Reverted to a simpler approach: just drop the two FK constraints (pending_actions_initiated_by_fkey and pending_action_votes_voter_id_fkey) with no new columns. The admin_id values are still stored in initiated_by/voter_id, just without referential integrity to the users table. The FK drop is now also called inline at the top of create_pending_action so it self-heals on the first call even if the startup migration hasn't run yet
-
-
 ## [6.38.887] — 2026-05-06
 
 ### Security fixes
@@ -3633,33 +3272,23 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 ### Bug fixes
 - **Offboarding and deactivate broken** — `create_pending_action` was inserting `admin_id` (from `admin_users`) into `pending_actions.initiated_by` which has `REFERENCES users(id)` FK constraint. Since admin_users and users are separate tables with overlapping IDs this caused FK violations and 500 errors on every MPA action. Fixed: migration drops both `pending_actions_initiated_by_fkey` and `pending_action_votes_voter_id_fkey`, adds `admin_initiator_id` and `admin_voter_id` columns referencing `admin_users(id)`. INSERTs now use `NULL` for `initiated_by`/`voter_id` and store the real admin ID in the new columns
 - **`admin_org_devices: column browser does not exist`** — `trusted_devices` table was created with columns `user_agent`, `last_seen`, `created_at`, `location_country`, `location_city` but queries were selecting `browser`, `os`, `location`, `trusted_at`, `last_used` which do not exist. Fixed both queries to use actual schema column names
-
-
 ## [6.38.886] — 2026-05-05
 
 ### Bug fixes
 - **All MPA-gated settings stuck for 2-admin orgs**: `get_mpa_policy` returned the default required approvals (2 for IP allowlist, geo-blocking, member operations) regardless of how many admins the org actually has. With exactly 2 admins, every change needed both to approve — so one admin could never save settings alone. `get_mpa_policy` now caps `required` at the actual number of active admins: a 1-admin org gets `required=1` (immediate), a 2-admin org is capped at 2, etc. This means solo admins can always save their own settings immediately
 - **saveIpAllowlist MPA feedback**: was silently showing "Saved" on 202 responses. Now correctly shows "pending approval" message with required approvals count when MPA is triggered
-
-
 ## [6.38.885] — 2026-05-05
 
 ### Bug fixes
 - **Policy settings not saving**: the policy POST endpoint routes through MPA. If the org has a custom approval policy requiring 2+ approvals for change_security_policy, the endpoint returns 202 (which is still `r.ok`) and the JS was showing "Policy saved" even though the change was only queued for approval. Fixed: JS now checks specifically for 202 and shows "Policy change pending approval" with the required approvals message, vs 200 which shows "Policy saved" and reloads the policy. Backend UPDATE also now uses explicit typed values from the validated updates dict rather than re-reading raw from request.json
-
-
 ## [6.38.884] — 2026-05-05
 
 ### Bug fixes
 - **x button definitive fix**: offboardModal was the only modal-overlay div missing style display-none. Every other modal has it explicitly; this one did not, so it was always visible in the document flow. Its modal-close button rendered on every page. Fixed by adding display-none to offboardModal and adding the missing CSS rules so it opens correctly via classList.add open
-
-
 ## [6.38.883] — 2026-05-05
 
 ### Bug fixes
 - **× still showing (tour card)**: even with `_maybeAutoStart` fixed to check `TOUR_KEY`, the key was never in localStorage because `stopTour(completed=true)` only saved it on full completion, and users were navigating away mid-tour. Fixed: `startTour()` now saves `TOUR_KEY` immediately the moment the tour first opens — once seen, it never auto-starts again regardless of how it's closed. The Reset tour button explicitly clears it
-
-
 ## [6.38.882] — 2026-05-05
 
 ### Bug fixes
@@ -3667,28 +3296,20 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Tour card persisting after navigation**: removed `if (!_active) return` guard from `stopTour` and always remove all three elements by both reference and `getElementById` fallback, ensuring the card is always cleaned up
 - **Notification panel clipped by sidebar**: sidebar `overflow-y:auto` creates a scroll container that clips `position:absolute` children. Fixed by removing `overflow-y:auto` from the sidebar and wrapping only the nav items (Management through Account) in a `flex:1; overflow-y:auto` scroll div, leaving the footer (notifications + profile) outside the scroll container so the panel can render above it freely
 - **Debug logging removed**: `[HV-X-DEBUG]` stripped now that cause is confirmed
-
-
 ## [6.38.881] — 2026-05-05
 
 ### Debugging
 - **× element tracker**: `[HV-X-DEBUG]` — MutationObserver watches for any × button added to the DOM and logs its id, class, parent, position, and outerHTML immediately when it appears
 - **Notification panel debug**: `window._notifDebug()` — call this in console to see panel position, display state, and bell button coordinates
-
-
 ## [6.38.880] — 2026-05-05
 
 ### Bug fixes
 - **Notification panel rebuilt**: bell button now uses `nav-item` class so it matches all other sidebar items visually (icon + "Notifications" text, consistent hover). Added a × close button to the panel header. Removed conflicting `::after` CSS overrides. Panel has `max-height:400px` to prevent it overflowing the screen
-
-
 ## [6.38.879] — 2026-05-05
 
 ### Bug fixes
 - **× button (definitive fix)**: the notification panel was `position:fixed` with JS-computed coordinates based on the bell button's `getBoundingClientRect()`. On narrow/mobile viewports the panel was rendering at wrong coordinates, showing a dismiss × button visibly at bottom-right of the viewport. Changed to static CSS `position:fixed; left:252px; bottom:80px` so it always renders above the QA panel on the left side of the content area. JS positioning removed
 - **Notification panel close on navigation**: `closeNotifPanel()` called in nav wrapper alongside QA menu close
-
-
 ## [6.38.878] — 2026-05-05
 
 ### Bug fixes
@@ -3696,24 +3317,18 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Notification panel broken**: fixed positioning — panel now appears to the right of the bell button rather than overlapping it
 - **Email still `[email protected]`**: moved to `data-cfasync="false"` attribute on the element plus async microtask restore — the element stores the real value in `data-e` and re-applies it after Cloudflare's synchronous scanner runs. Also added `no-transform` Cache-Control and removed `email_off` comment wrappers (which Cloudflare was ignoring)
 - **AI remediation 429**: rate limit raised from 3/hr to 10/hr
-
-
 ## [6.38.877] — 2026-05-05
 
 ### Bug fixes
 - **Tour card not disappearing after Finish**: `_card.remove()` was stripped when debug logging was cleaned up — the orphan check `setTimeout` that held the remove call got deleted wholesale. Restored with `_active` guard and belt-and-braces `getElementById` fallback
 - **× button stuck after tour overlay**: tour overlay blocks document click handler so QA menu stays open. `startTour()` now explicitly closes the QA menu before building overlay
 - **Email still showing as protected**: `&#64;` entity still caught by Cloudflare's JS-side scanner which runs post-render on text nodes. Changed to split-span approach — user and domain in separate `<span>` elements, `@` in a third span. CF pattern matcher requires a single contiguous text node containing `@` and cannot match across element boundaries. Also added `no-transform` to `Cache-Control` header to disable CF transformations at CDN level
-
-
 ## [6.38.876] — 2026-05-05
 
 ### Bug fixes
 - **× button identified and fixed**: the QA quick-actions panel (purple + circle) shows a × icon when open. Nav item clicks use `stopPropagation()` which prevented the document-level click handler from closing the menu — so opening the QA panel then clicking any sidebar item left the × trigger visible permanently. Nav wrapper now explicitly closes the QA menu on every navigation
 - **Policy sim shows 100% with no members**: when org has zero members `(1 - 0/1) * 100 = 100%` which is misleading. Now returns a clear message: "No members yet — invite your team to see simulation results."
 - **Debug logging removed**: all `[HV-NAV]`, `[HV-INIT]`, `[HV-EMAIL]`, `[HV-X]`, `[HV-TOUR]` console logging stripped now that issues are diagnosed
-
-
 ## [6.38.875] — 2026-05-05
 
 ### Bug fixes
@@ -3721,40 +3336,28 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Notifications panel clipped**: sidebar has `overflow-y:auto` which clips `position:absolute` children that overflow the sidebar bounds. Changed panel to `position:fixed` and positioned programmatically via JS using the bell button's `getBoundingClientRect()` — panel now renders above the sidebar properly
 - **Policy sim always showing 100% compliance**: `row.get('score', 100)` defaulted missing scores to 100 (perfect), masking members with no score data. Changed default to `0` so missing scores correctly flag as non-compliant
 - **X button debug**: added DOM scan 2 seconds after init to log all visible fixed/absolute elements at bottom-left — `[HV-X]` in console
-
-
 ## [6.38.874] — 2026-05-05
 
 ### Bug fixes
 - **Random 401s on section navigation — root cause found**: event click bubbling caused `nav()` to fire 3 times on a single sidebar click (e.g. clicking Administrators also triggered nav(groups) and nav(organisation) via parent element bubbling). Under gevent workers, 3 concurrent `/api/admin/*` requests raced on `app.config['SESSION_COOKIE_NAME']` mutation — one coroutine would reset it to `hexvault_session` while another was reading the session, causing `admin_id` lookup to find the vault session (no admin_id) → 401. Two fixes: (1) `e.stopPropagation()` on all `[data-nav]` click handlers, (2) admin session decoded into `flask.g.admin_sess` in `before_request` using itsdangerous directly — no more `app.config` mutation per-request
-
-
 ## [6.38.873] — 2026-05-05
 
 ### Debugging
 - **401 redirect delayed 5 seconds**: instead of instant page redirect, 401 interceptor now shows a persistent red banner at the top of the page with the URL and full call stack, then waits 5 seconds before redirecting — enough time to read the cause
-
-
 ## [6.38.872] — 2026-05-05
 
 ### Maintenance
 - **CHANGELOG backfilled**: added all missing entries for v6.38.843–6.38.871 with correct date (2026-05-05)
 - **Packaging**: updated memory to always update changelog date on every version bump
-
-
 ## [6.38.871] — 2026-05-05
 
 ### Admin dashboard: debugging build
 - **Debug instrumentation added**: targeted `[HV]`, `[HV-NAV]`, `[HV-TOUR]`, `[HV-EMAIL]` console logging to diagnose overview reset, persistent × button, and email obfuscation
-
-
 ## [6.38.870] — 2026-05-05
 
 ### Bug fixes
 - **CSP violation on admin login page**: session-expired inline script blocked by Content Security Policy — moved logic into `admin-login.js` (external script, already allowed)
 - **`/api/csp-report` returning 403**: CSP violation reports are browser-automatic POSTs with no CSRF token — added `csp_report` to the CSRF exempt list alongside `sentry_tunnel`
-
-
 ## [6.38.869] — 2026-05-05
 
 ### Bug fixes
@@ -3762,22 +3365,16 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **`_s` helper undefined**: the safe DOM update helper was inadvertently removed with debug lines — re-added inside `init()`
 - **Tour card dismissal on navigation**: `nav()` wrapper now calls `hvTour.stop()` if the tour is active, so clicking any sidebar item while the tour is open dismisses it immediately
 - **401 redirect includes reason**: 401 interceptor now redirects to `/admin/login?reason=session_expired`; login page shows "Your session expired — please sign in again."
-
-
 ## [6.38.868] — 2026-05-05
 
 ### Bug fixes
 - **Syntax error in admin-panel.js**: partial str_replace left `';/login'` at the end of the 401 redirect URL breaking JS syntax — fixed
 - **Tour card `×` persists on every page**: tour auto-starts but user navigates away without dismissing — card stays at z-index:100000; `nav()` wrapper now dismisses tour on sidebar navigation
 - **Admin session expired message**: 401 redirect to login now passes `?reason=session_expired` and login page surfaces the message
-
-
 ## [6.38.867] — 2026-05-05
 
 ### Admin dashboard
 - **Sign out button repositioned**: moved from standalone full-width button below the profile row into the profile row itself as a compact icon button — avatar, email/role, and sign-out icon now all on one line at the bottom of the sidebar
-
-
 ## [6.38.866] — 2026-05-05
 
 ### Bug fixes
@@ -3785,113 +3382,83 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Tour firing 401 storm**: tour called `nav()` on each step, triggering all section load functions simultaneously. Tour now highlights sidebar nav items without navigating — no API calls fired during tour
 - **Cloudflare email obfuscation**: added `X-Robots-Tag` header on admin portal response; `sbEmail` element already empty in source HTML, set only via JS
 - **Admin session 401s**: `session.permanent = False` caused cookie to expire very quickly; changed to `True` so `PERMANENT_SESSION_LIFETIME` applies. Admin inactivity timeout raised from 15 → 60 minutes. `admin_last_active` now read before updating to prevent concurrent-request race condition
-
-
 ## [6.38.865] — 2026-05-05
 
 ### Bug fixes
 - **`[email protected]` in sidebar**: Cloudflare email obfuscation had rewritten a previously-set email address into the HTML source — cleaned out and wrapped element with `<!--email_off-->` directive; `X-Robots-Tag: noindex` header added to admin portal response
 - **`×` button at bottom of every page**: `bulkActionBar` had conflicting `display:none` / `display:flex` inline styles — investigated; root cause confirmed as duplicate display declarations
 - **Sign out button accessibility**: moved inline with avatar/email profile row at bottom of sidebar
-
-
 ## [6.38.864] — 2026-05-05
 
 ### Bug fixes
 - **Admin portal session expiring**: `session.permanent = False` in admin login — Flask didn't apply `PERMANENT_SESSION_LIFETIME`, giving cookies a very short browser-determined lifetime. Changed to `True`
 - **Admin inactivity timeout**: default raised from 15 → 60 minutes via `ADMIN_SESSION_TIMEOUT` env var
 - **Concurrent request expiry race**: `admin_last_active` was updated after the timeout check, so concurrent requests could all read a stale timestamp and all expire simultaneously — now read old value, update immediately, then check elapsed against old value
-
-
 ## [6.38.863] — 2026-05-05
 
 ### Admin tour
 - **Tour card not dismissing on Finish**: `stopTour()` was nulling `_card` without calling `_card.remove()` — card element stayed in DOM. Fixed
 - **Emoji icons replaced with SVGs**: all 12 tour step icons replaced with inline SVGs using admin panel CSS variables (`--primary` purple, `--amber` gold, `--emerald` green)
 - **Icon container styled**: each icon displayed in a 32×32 pill with subtle purple background, consistent with admin UI
-
-
 ## [6.38.862] — 2026-05-05
 
 ### Bug fixes
 - **Random tab resets — root cause found**: `admin-features.js` had 19 hardcoded `window.location.href = '/admin/login'` redirects and `admin-intelligence.js` had 10 more — one per section load function, triggering on any 401 (transient network error, rate limit, brief session timing). Any of 30 trip-wires firing = page reload = overview. All removed; central fetch interceptor with `_adminSessionConfirmed` guard is now the single redirect authority
 - **Notification bell 401**: also redirected directly, bypassing the guard — fixed
-
-
 ## [6.38.861] — 2026-05-05
 
 ### Bug fixes
 - **Double `init()` confirmed and fixed**: debug logs showed `init()` firing at `10.757Z` and `10.763Z` — 6ms apart. Root cause: `admin.html` had `<script>init();</script>` immediately after loading `admin-panel.js`, which already calls `init()` at module level. Removed the duplicate inline call
 - **Tour not showing**: `TOUR_KEY` was set in localStorage by a previous buggy version — cleared via `?reset_tour=1` URL param support added
 - **Debug logging removed**: all `[HV-DEBUG]` lines stripped after diagnosis
-
-
 ## [6.38.860] — 2026-05-05
 
 ### Debugging
 - **Double-init identified**: debug logs confirmed `init()` ran twice simultaneously. Root cause: inline `<script>init();</script>` in `admin.html` + module-level `init()` call in `admin-panel.js`
 - **Tour localStorage flag**: `TOUR_KEY = 1` already set — `?reset_tour=1` URL param added to clear it without console access
-
-
 ## [6.38.859] — 2026-05-05
 
 ### Debugging build
 - Added `[HV-DEBUG]` console logging throughout `init()`, `loadStats()`, 401 interceptor, and tour auto-start to diagnose random resets and tour not showing
 - Added server-side `[HV-DEBUG]` logging to `admin_me` and `admin_stats` endpoints
 - Added `[HV-DEBUG]` warning for `ext_settings` column fallback
-
-
 ## [6.38.858] — 2026-05-05
 
 ### Bug fixes
 - **Admin portal instant logout**: `init()` catch block redirected to login on ANY exception including JS `TypeError` from null DOM elements — added `_initFailed` flag, catch only redirects on genuine auth failures; all DOM updates wrapped in null-safe `_s()` helper
 - **Extension never-lock ignored**: `setupIdleLock()` read `session_timeout` from login response (server value) ignoring locally stored `hv_settings.timeout = -1`. Now checks local preference first; also fixed UNLOCK path
 - **Database `ext_settings` column**: graceful fallback if JSONB column missing (migration pending)
-
-
 ## [6.38.857] — 2026-05-05
 
 ### Bug fixes
 - **Admin portal instant logout**: reload detector IIFE checked `sessionStorage._hv_admin_active` + `navEntry.type === 'reload'` and redirected — BFCache and tour navigation classified as reload. Removed detector entirely; server session timeout handles re-auth
 - **Extension never-lock not respected**: `setupIdleLock()` used server `session_timeout` regardless of local `hv_settings.timeout = -1`. Fixed for both initial login and UNLOCK paths
-
-
 ## [6.38.856] — 2026-05-05
 
 ### Bug fixes
 - **`loadOnboardingChecklist` 429 loop (again)**: dead wrapper at L5413 in `admin-panel.js` re-wrapped `loadOnboardingChecklist` and called `_origLoadChecklist()` directly, bypassing the TTL cache. Removed
 - **Chrome tab switch causing page refresh**: `visibilitychange` handler was resetting `_lastPollTimes[_activeSection] = 0` and firing `_pollTicker()` on tab return — removed forced refresh, normal cadence resumes
-
-
 ## [6.38.855] — 2026-05-05
 
 ### Bug fixes
 - **ip-allowlist 429 (continued)**: removed `/api/admin/ip-allowlist` from `loadOnboardingChecklist` parallel fetch — endpoint has strict rate limit; checklist `hasIpList` defaults to false
-
-
 ## [6.38.854] — 2026-05-05
 
 ### Packaging
 - Restored correct naming convention: `hexvault-vX.X.X.tar.gz` and `hexvault-extension-vX.X.X.zip` as separate packages (no `-server-` in name)
 - Extension v1.0.66 (no changes from 1.0.65, version bump only)
-
-
 ## [6.38.853] — 2026-05-05
 
 ### Admin tour
 - **Tour overlay no longer blurs**: removed `backdrop-filter: blur(2px)` — dashboard remains readable during tour
 - **Reset button in tour card**: every step now has a "Reset tour" link in the footer; clicking clears `localStorage` and `sessionStorage` and shows confirmation toast
 - **`hvTour` console API**: `hvTour.start()`, `hvTour.stop()`, `hvTour.reset()` exposed on `window`
-
-
 ## [6.38.852] — 2026-05-05
 
 ### Bug fixes
 - **`init is not defined` / MIME error**: `admin-tour.js` not present on live server — scripts returned 404 HTML pages which browser tried to execute as JS. File now included in package
 - **`loadOnboardingChecklist` recursive 429**: dead "FEATURE 9" wrapper in `admin-panel.js` re-wrapped the function, calling original on every invocation and bypassing the TTL cache. Removed
 - **Chrome tab switch refresh**: `visibilitychange` forced immediate poll on tab return — removed
-
-
 ## [6.38.851] — 2026-05-05
 
 ### Admin tour
@@ -3900,60 +3467,42 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 ### Packaging
 - Cleaned 42 stale files from working directory (24 old extension zips, 18 one-off debug scripts)
 - Server tarball now explicitly excludes `extension-src/` — two separate outputs going forward
-
-
 ## [6.38.850] — 2026-05-05
 
 ### Bug fixes
 - **`loadOnboardingChecklist` 429**: ip-allowlist endpoint has 20/hr rate limit; checklist was calling it on every overview visit. Added 5-minute TTL cache — `_checklistLastLoaded` timestamp skips re-fetch within window
 - **`loadStats()` skipped when user navigates early**: `if (_activeSection === 'overview')` guard in `init()` was wrapping `loadStats()` — if user clicked another tab before `/api/admin/me` resolved, `loadStats()` never ran. Fixed: `loadStats()` and `startPolling()` always run; only checklist and live indicator are overview-gated
-
-
 ## [6.38.849] — 2026-05-05
 
 ### Bug fixes
 - **Extension double preferences calls**: `_suppressSave` flag added to `setupSettingsPage` — toggle change handlers and timeout select now suppressed during programmatic UI restore, preventing spurious `SAVE_USER_PREFERENCE` POSTs
 - **Phishing-check 401 on HexVault subdomains**: skip condition only excluded `hexvault.co.uk`, not `admin.hexvault.co.uk` — extended to `domain.endsWith('.hexvault.co.uk')`
-
-
 ## [6.38.848] — 2026-05-05
 
 ### Extension v1.0.65
 - **Extension double preferences (partial)**: investigated — `GET_USER_PREFERENCES` fires once per settings open; second call was `SYNC_EXT_SETTINGS` POST triggered during programmatic toggle restore (fix completed in .849)
-
-
 ## [6.38.847] — 2026-05-05
 
 ### Bug fixes
 - **Admin stats not loading**: checklist TTL stamped after successful render; `_refreshSection` no longer calls `loadOnboardingChecklist`
-
-
 ## [6.38.846] — 2026-05-05
 
 ### Bug fixes  
 - **Admin tour**: `stopTour()` removed forced `nav('overview')` on close; tour `TOUR_KEY` saved to localStorage on start to survive page reloads during tour; `sessionStorage` tracks active state within session
-
-
 ## [6.38.845] — 2026-05-05
 
 ### Bug fixes
 - **Admin tour auto-triggering**: `?reset_tour=1` URL param support; tour `TOUR_KEY` saved immediately on start (not just on finish) to prevent reload loop
 - **ip-allowlist rate limit raised**: 20/hr → 60/min
-
-
 ## [6.38.844] — 2026-05-05
 
 ### Bug fixes
 - **Admin tour not appearing after reset**: `TOUR_KEY` saved on `startTour()` immediately — any page reload during tour won't restart it; `sessionStorage` guards within-session restarts
 - **Tour going back to overview on close**: removed `nav('overview')` from `stopTour()`
-
-
 ## [6.38.843] — 2026-05-05
 
 ### Admin tour (initial build)
 - First version of admin onboarding tour — 12 steps, spotlight highlight, progress bar, keyboard nav
-
-
 ## [6.38.842] — 2026-05-04
 
 ### Admin dashboard
@@ -3962,39 +3511,27 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Staggered table row animations**: table rows fade in sequentially (22ms stagger) when data updates, giving a smooth populated-list feel instead of an instant swap
 - **Section fade-in**: navigating to a new section fades in smoothly
 - **No immediate re-poll on tab return**: poll tick on visibility change uses the existing cadence check rather than firing immediately
-
-
 ## [6.38.841] — 2026-05-04
 
 ### Extension 1.0.61
 - **Save password prompt now working**: fixed the full chain of issues preventing the prompt from appearing — content script message allowlist, SameSite=Lax blocking direct fetches from content scripts, cross-origin sessionStorage loss, decrypt-failure silent skip, and phishing-check 500/401 triggering false logouts
 - Removed debug console.log statements added during diagnosis
-
-
 ## [6.38.837] — 2026-05-04
 
 ### Extension 1.0.52
 - **Always offer to save passwords**: removed domain exclusion for hexvault.co.uk and admin.hexvault.co.uk — the extension now offers to save on all sites, user's choice
-
-
 ## [6.38.835] — 2026-05-04
 
 ### Bug fixes
 - **ReferenceError: onVaultReady is not defined**: `onVaultReady` was defined inside the main vault-nextgen IIFE (closes at line 1143) but called by code appended outside it (`extendInit` at line 1621 and a further block at line 2001). Fixed by exposing `onVaultReady` as `window._hvOnVaultReady` at the end of the IIFE, and updating all out-of-scope callers to use the window reference
-
-
 ## [6.38.834] — 2026-05-04
 
 ### Bug fixes
 - **Pricing buttons too wide**: buttons now have `max-width:220px` so they don't span the full card width
-
-
 ## [6.38.833] — 2026-05-04
 
 ### Bug fixes
 - **Pricing card buttons square/overflowing**: `overflow:hidden` on `.pc` was clipping the button's `border-radius:9px` at the card boundary, making buttons appear square. Removing `overflow:hidden` restores the rounded corners. Also removed `height:100%` which was fighting with the grid's `align-items:stretch` and causing layout instability — the grid handles equal card heights natively without it
-
-
 ## [6.38.832] — 2026-05-04
 
 ### Bug fixes
@@ -4003,22 +3540,16 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 
 ### Pricing
 - Image 2 confirms buttons are now correctly aligned (all pinned to card bottom)
-
-
 ## [6.38.830] — 2026-05-04
 
 ### Bug fixes
 - **Pricing card button alignment**: consolidated all pricing card layout CSS. Cards now have `height:100%` so grid stretch works correctly, `.pc-list` has `flex:1` to fill available space, `.pc-btn` has `margin-top:auto` to always pin to the card bottom. Removed redundant scattered override rules
-
-
 ## [6.38.829] — 2026-05-04
 
 ### Bug fixes
 - **Admin portal 401 on all API calls**: `admin_subdomain_session` was calling `admin_portal()` directly (bypassing `@require_admin_auth`), serving the portal HTML to unauthenticated visitors. All subsequent API calls then got 401 because the session had no `admin_id`. Fixed: explicit `session.get('admin_id')` check added before calling `admin_portal()` — redirects to `/admin/login` if not authenticated
 - **Extension 401 loop on phishing-check**: reverted the `chrome.storage.local` session mirror introduced in v1.0.36, which was restoring dead server sessions after SW restart, causing a loop of 401s. Session storage is now `chrome.storage.session` only (original behaviour). Added `_phish401At` backoff: after any phishing-check 401, the extension waits 60 seconds before trying again; resets on fresh login
 - **Extension not saving passwords**: pending password nonce cache (`_pendingPasswordCache`) is now dual-written to `chrome.storage.session` so it survives SW termination between form-submit and next page load
-
-
 ## [6.38.828] — 2026-05-04
 
 ### Bug fixes
@@ -4026,8 +3557,6 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **Extension not offering to save passwords**: pending password nonce cache was in an in-memory Map inside the service worker. When Chrome kills and restarts the SW between form-submit and the next page load, the Map is gone and the save prompt bails silently. Cache is now dual-written to `chrome.storage.session` and recovered on SW restart
 - **Pricing buttons misaligned**: `margin-top:auto` re-appeared on `.pc-btn` and `flex:1` remained on `.pc-list` — both removed again; buttons sit at `margin-top:20px` below the feature list
 - **Admin quick-actions × icon stuck**: `initQuickActions` now explicitly resets the trigger icon and removes the `open` class on init, preventing the `×` from being shown on page load if the DOM retained stale open state from a previous navigation
-
-
 ## [6.38.827] — 2026-05-04
 
 ### New features
@@ -4036,15 +3565,11 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 - **API token rotation**: new `POST /api/v1/tokens/<id>/rotate` endpoint issues a replacement token with the same name and expiry and immediately invalidates the old one; Rotate button added to each token row in Settings → Tokens; create and delete operations now logged to the security event log
 - **Entry pinning**: `is_pinned` column added to the passwords table (auto-migrated on startup); `PATCH /api/passwords/<id>/pin` endpoint; Pin to top / Unpin action in the entry context menu; pinned entries sort to the top of the vault list and show a purple pin badge with a left border accent
 - **Last sign-in notification**: after login, a dismissible banner shows the previous sign-in time and IP address for 8 seconds — a standard security trust signal
-
-
 ## [6.38.826] — 2026-05-04
 
 ### Bug fixes
 - TOTP valid_window increased from 1 to 2 on all four verify calls (user login, admin login, 2FA setup, 2FA disable) — tolerates up to ±60 seconds of clock drift between the user's authenticator app and the server, up from ±30 seconds
 - 2FA failure error message now reads "Invalid 2FA code. Check your authenticator app and make sure your device clock is correct." instead of the bare "Invalid 2FA code"
-
-
 ## [6.38.825] — 2026-05-04
 
 ### Vault improvements
@@ -4062,8 +3587,6 @@ Admin could resolve GDPR requests belonging to users in other orgs. `gdpr_reques
 ### Extension
 - Added REMOVE_NEVER_SAVE message handler to background.js
 - Added Never Save list management UI in Settings: view all blocked sites, add new entries, remove with one click
-
-
 ## [6.38.825] — 2026-05-04
 
 ### Eight UX and quality improvements
@@ -4093,8 +3616,6 @@ Routes fixed: join_waitlist, contact_form, get_org, get_org_members, get_invite_
 The handler in script.js fired before toggleAuthMode was defined on some load orders. vault-improvements.js re-runs it after all scripts have loaded, with retry logic (up to 20 attempts at 150ms intervals). Automatically focuses the email field after switching to register mode.
 
 ---
-
-
 ## [6.38.824] — 2026-05-04
 
 ### Cloudflare Access JWT verification on admin subdomain
@@ -4117,8 +3638,6 @@ Standalone CF JWT verifier that accepts an explicit audience tag. Shares the 1-h
 **You need to do in Cloudflare (see below for exact steps).**
 
 ---
-
-
 ## [6.38.823] — 2026-05-04
 
 ### Admin portal email cleanup, URL fixes, and full security audit
@@ -4152,8 +3671,6 @@ ADMIN_DOMAIN=admin.hexvault.co.uk
 ADMIN_URL=https://admin.hexvault.co.uk
 
 ---
-
-
 ## [6.38.822] — 2026-05-04
 
 ### Full admin portal isolation
@@ -4186,8 +3703,6 @@ Existing admin_subdomain_session before_request blocks any path not in (/admin, 
 - Admin CSP blocks vault-specific connections (HIBP, vault script hashes)
 
 ---
-
-
 ## [6.38.821] — 2026-05-04
 
 ### Clean URLs on admin subdomain
@@ -4205,8 +3720,6 @@ require_admin_auth redirects unauthenticated requests to /login (not /admin/logi
 admin-login.js after-login redirect changed to / when on admin subdomain, /admin on main domain.
 
 ---
-
-
 ## [6.38.820] — 2026-05-04
 
 ### Fix admin subdomain session cookie isolation
@@ -4214,8 +3727,6 @@ admin-login.js after-login redirect changed to / when on admin subdomain, /admin
 Simplified the session cookie mutation in admin_subdomain_session and restore_session_cookie_defaults. Removed SESSION_COOKIE_DOMAIN, SESSION_COOKIE_SAMESITE, and SESSION_COOKIE_PATH mutations — only SESSION_COOKIE_NAME is changed per-request. Reason: setting SESSION_COOKIE_DOMAIN to admin.hexvault.co.uk in app.config at request time is unreliable because Flask reads the session cookie name once at startup context, and mutating it mid-request caused the session to be unreadable on some requests. Removing the domain/samesite mutations also avoids the risk of the cookie being scoped to *.hexvault.co.uk (all subdomains) instead of admin.hexvault.co.uk only. The browser's own cookie isolation (cookies are scoped to the exact hostname that set them when domain= is absent) provides the separation we need without any Flask config mutation.
 
 ---
-
-
 ## [6.38.819] — 2026-05-04
 
 ### Admin portal subdomain isolation (admin.hexvault.co.uk)
@@ -4247,8 +3758,6 @@ ADMIN_DOMAIN=admin.hexvault.co.uk
 - Vault API routes (/api/passwords, /api/vault, etc.) return 404 on admin subdomain
 
 ---
-
-
 ## [6.38.818] — 2026-05-04
 
 ### Fix pricing section button position
@@ -4258,8 +3767,6 @@ The pricing card buttons were pushed to the absolute bottom of each card by `mar
 Fixed by changing `.pc-btn{margin-top:auto}` to `.pc-btn{margin-top:20px}`. The flex layout and `pc-list{flex:1}` still ensure all cards in the same grid row are equal height (grid align-items:stretch). The button now sits 20px below the last feature list item consistently across all cards, and cards still stretch to the height of the tallest card in the row.
 
 ---
-
-
 ## [6.38.817] — 2026-05-04
 
 ### Admin dashboard CSRF fixes and button design system
@@ -4289,8 +3796,6 @@ Same fallback hardened in `admin-features.js` `_hdrs()`.
 **admin-panel.js version string updated** from ?v=6.38.759 to ?v=6.38.817 to match the current deploy version.
 
 ---
-
-
 ## [6.38.816] — 2026-05-04
 
 ### Fix what's new strip colours and roadmap equal-height boxes
@@ -4302,8 +3807,6 @@ Root cause: in v6.38.812, the new CSS block (whats-new-strip, wns-*, roadmap, ex
 v6.38.814 added `align-items:start` to rm-track to fix the empty-space problem. That fixed the gap but made the three roadmap cards different heights, which looks uneven. Replaced with `align-items:stretch!important` so all three columns are the same height (the grid default). The rm-col already has `display:flex;flex-direction:column` and rm-items has `flex:1` so the content fills available space within the equal-height card. Both issues resolved in the same CSS tail rewrite.
 
 ---
-
-
 ## [6.38.815] — 2026-05-04
 
 ### Fix FAQ gap and share button design
@@ -4315,8 +3818,6 @@ When the 4 new FAQ questions were injected in v6.38.811, they were placed inside
 The "Share your experience" button was using `pc-btn pc-btn-o` (the outlined pricing card variant) with large `padding:12px 28px` overrides. On screen it rendered as a full-width black pill that didn't match anything else on the landing page. Replaced with `cs-btn mag-btn` (the same class used by the early access CTA button) which uses `var(--v)` purple fill, consistent height (48px), and the site's standard font. "Leave a Chrome review" uses the ghost bordered style consistent with secondary actions elsewhere.
 
 ---
-
-
 ## [6.38.814] — 2026-05-04
 
 ### Fix roadmap layout
@@ -4330,8 +3831,6 @@ The rm-track CSS grid used the default align-items:stretch, which makes all thre
 The NOW column had accumulated 28 items across multiple sessions — every new feature was appended to it. This made it unreadably long and much taller than the other columns. Trimmed to 15 most differentiated items (zero-knowledge vault, HexGuard, Watchtower, Breach Alarm, Command Palette, extension, TOTP, passkeys, JIT access, offboarding, score streak, vault identity card, version history, tag system, exfil detection) plus a "View full changelog →" link that routes to /changelog for the remaining items (desktop app, cloud backup, SSO/SAML, SCIM, family vault, emergency access, etc.).
 
 ---
-
-
 ## [6.38.813] — 2026-05-04
 
 ### Remove fake testimonials
@@ -4341,8 +3840,6 @@ The testimonials section added in v6.38.811 contained fabricated quotes attribut
 Replaced with an honest early access feedback section: headline 'USING HEXVAULT? WE WANT TO HEAR IT.', explicit copy ('No manufactured quotes here'), a mailto CTA to hello@hexvault.co.uk, a direct link to leave a Chrome Web Store review, and the factual trust indicators (UK-based, early access programme, zero-knowledge verified). When real users submit feedback it can be added with their permission.
 
 ---
-
-
 ## [6.38.812] — 2026-05-04
 
 ### Landing page mobile + responsive fixes
@@ -4365,8 +3862,6 @@ The new FAQ answers added in v6.38.811 (Watchtower, Breach Alarm, encrypted expo
 All inline styles replaced with semantic CSS classes (.whats-new-strip, .wns-inner, .wns-label, .wns-sep, .wns-link, .wns-link-cta, .wns-tag). Strip continues to display:none on screens narrower than 560px via media query.
 
 ---
-
-
 ## [6.38.811] — 2026-05-04
 
 ### Landing page, SEO, and site improvements
@@ -4407,8 +3902,6 @@ FAQ: four new questions — What is Watchtower, What is the Breach Alarm, Can I 
 Roadmap NOW: eight new shipped items added — Watchtower, Breach Alarm, Command Palette, Score Streak & Breakdown, Vault Identity Card, Password Version History, Tag System, Exfil Detection & Canary Wires.
 
 ---
-
-
 ## [6.38.810] — 2026-04-30
 
 ### Ten features: 4 vault + 6 extension (v1.0.33)
@@ -4451,8 +3944,6 @@ Settings key: tab_profiles (array of {domain, vault} rules). Content script read
 **Extension bump: v1.0.32 → v1.0.33**
 
 ---
-
-
 ## [6.38.809] — 2026-04-30
 
 ### Four next-gen vault features + next-gen Watchtower
@@ -4491,8 +3982,6 @@ HMAC-SHA256 signed security posture attestation for personal use. Shows: securit
 - csp_violations (user_id, document_uri, violated_directive, blocked_uri, source_file, line_number, column_number, status_code, original_policy, user_agent, ip_address, created_at)
 
 ---
-
-
 ## [6.38.808] — 2026-04-30
 
 ### 10 vault next-gen features
@@ -4547,8 +4036,6 @@ Loads /api/vault/anomaly-digest on vault ready. If unusual activity exists (new 
 - GET /api/vault/anomaly-digest
 
 ---
-
-
 ## [6.38.807] — 2026-04-30
 
 ### Landing page, blog post, and mobile improvements
@@ -4567,8 +4054,6 @@ CSP-compliant: zero inline scripts. Only JSON-LD structured data (exempt from sc
 Post 3 changed from coming-soon placeholder to live link to new post. Post 4 (Building MPA in Flask) added as the new coming-soon. Fixed two empty @media(max-width:768px) and @media(max-width:500px) blocks that contained no rules — filled with proper responsive styles for blog-hero, blog-grid, post-card, post-title, and post-excerpt.
 
 ---
-
-
 ## [6.38.806] — 2026-04-30
 
 ### Fix: AI Advisor 500 error + style consistency pass
@@ -4586,8 +4071,6 @@ The AI briefing endpoint at /api/admin/ai-advisor/briefing was querying pending_
 Note: The original admin sections use class=admin-input which is the established convention in the original codebase and has its own CSS rule. All new sections added in v6.38.799-804 use class=form-input and class=prem-select consistently.
 
 ---
-
-
 ## [6.38.805] — 2026-04-30
 
 ### Security audit: 5 vulnerabilities fixed
@@ -4608,8 +4091,6 @@ The exfil detection query used ARRAY_AGG(credential_id ORDER BY accessed_at) to 
 The PDF download button previously used window.location.href assignment, which silently showed a blank PDF if the server returned a 500 error. Changed to fetch() with explicit error handling — if the server returns a non-OK response, the error message is shown in a toast before any download attempt.
 
 ---
-
-
 ## [6.38.804] — 2026-04-30
 
 ### Ten next-gen platform features
@@ -4651,8 +4132,6 @@ Cryptographically signed attestation proving security properties without reveali
 - vault_snapshots table
 
 ---
-
-
 ## [6.38.803] — 2026-04-30
 
 ### Breach Alarm System
@@ -4675,8 +4154,6 @@ Full org-wide incident response system for when an attacker may have gained acce
 - breach_alarm_log table: id, org_id, event (triggered/resolved/canary_trip/dead_man), triggered_by, reason, detail (JSONB), sessions_killed, created_at
 
 ---
-
-
 ## [6.38.802] — 2026-04-30
 
 ### Eight new next-gen admin features
@@ -4706,8 +4183,6 @@ NIST PQC compliance check across the org: weak API tokens (< 32 chars), credenti
 Live org security heartbeat. Polls /api/admin/security-pulse every 15 seconds and displays: pulse score (100 = all quiet, decreases with threats), active session count, threat events in last hour, and a real-time event feed of the last 15 minutes of org vault activity. Animated green dot indicator. Stops polling when navigating away from the section to avoid unnecessary requests.
 
 ---
-
-
 ## [6.38.801] — 2026-04-30
 
 ### Next-gen admin features: AI-powered CyberArk competition layer
@@ -4724,8 +4199,6 @@ AI-generated prioritised remediation playbook for the org's current security pos
 - Graceful degradation: all AI features show a clear configuration guide when API key is not set
 
 ---
-
-
 ## [6.38.801] — 2026-04-30
 
 ### Four next-gen admin features: CyberArk competitive
@@ -4743,16 +4216,12 @@ Most accessed credentials in the last 7/30/90 days, ranked by total access count
 Automatically detects three conflict types: (1) members who approved their own pending action (Critical), (2) members with both JIT and permanent access to the same folder (High), (3) single admin with no peer approver (Medium). Green all-clear when no conflicts found. Backend: GET /api/admin/sod-conflicts.
 
 ---
-
-
 ## [6.38.800] — 2026-04-30
 
 ### Fix: Onboarding checklist items unstyled
 - CSS classes ob-checklist-item, ob-cl-icon, ob-cl-title, ob-cl-sub, ob-cl-arrow were referenced by the checklist renderer but never defined in admin.html. Items rendered as raw unstyled stacked elements. Added the missing CSS rules
 
 ---
-
-
 ## [6.38.799] — 2026-04-30
 
 ### Fix: Admin dashboard layout broken — new sections outside main
@@ -4760,8 +4229,6 @@ Automatically detects three conflict types: (1) members who approved their own p
 - Moved all five sections to their correct position inside <main class="main"> before the closing tag
 
 ---
-
-
 ## [6.38.798] — 2026-04-30
 
 ### Admin dashboard fixes
@@ -4771,8 +4238,6 @@ Automatically detects three conflict types: (1) members who approved their own p
 - All new feature loaders now redirect to login on 401 instead of silently failing
 
 ---
-
-
 ## [6.38.797] — 2026-04-30
 
 ### Fix: Server error on login (500)
@@ -4781,16 +4246,12 @@ Automatically detects three conflict types: (1) members who approved their own p
 - needs_reencryption was the most likely cause as it was added recently without a migration
 
 ---
-
-
 ## [6.38.796] — 2026-04-30
 
 ### Fix
 - Removed duplicate admin_revoke_member_sessions route added in v6.38.795. Route already existed at line 10447 with identical functionality (also calling session_invalidated_at). Flask refused to start with duplicate endpoint name
 
 ---
-
-
 ## [6.38.795] — 2026-04-30
 
 ### Five new admin dashboard features
@@ -4811,8 +4272,6 @@ Per-member bar chart showing each member ranked by their oldest credential age. 
 Full org-level table of all secure send links: entry name, creator, created/expiry time, view count, and active/expired/revoked status. Admins can revoke any active link. Searchable. Summary stats (total, active, accessed). New backend: GET /api/admin/sharing-audit, POST /api/admin/sharing-audit/:id/revoke.
 
 ---
-
-
 ## [6.38.794] — 2026-04-30
 
 ### Bug fixes
@@ -4821,8 +4280,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - Geo-blocking: /api/admin/geo-blocking was returning 500 because the route was missing from app.py entirely. Added GET (returns enabled + allowed_countries) and PUT (routes through MPA, auto-executes if single admin) handlers matching the ip-allowlist pattern
 
 ---
-
-
 ## [6.38.793] — 2026-04-29
 
 ### Fix: CSP invalid source values
@@ -4832,8 +4289,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - CSP is now: self + wasm-unsafe-eval + cdnjs + 5 hashes for app.py f-string inline scripts
 
 ---
-
-
 ## [6.38.792] — 2026-04-29
 
 ### Fix: CSP inline script violations — permanent fix
@@ -4847,8 +4302,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - These scripts are now served as static files, so future edits never require CSP hash updates
 
 ---
-
-
 ## [6.38.791] — 2026-04-29
 
 ### Fix: CSP inline script violations
@@ -4858,24 +4311,18 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - All inline script hashes now verified correct against current file content
 
 ---
-
-
 ## [6.38.791] — 2026-04-29
 
 ### Fix
 - Roadmap accordion: moved inline script to /static/rm-accordion.js to comply with CSP (script-src 'self' blocks inline scripts without a matching hash)
 
 ---
-
-
 ## [6.38.791] — 2026-04-29
 
 ### Fix
 - Moved roadmap accordion JS from inline script to static/rm-accordion.js — inline script was blocked by CSP (script-src 'self' does not allow unsafe-inline). External file served from same origin is permitted
 
 ---
-
-
 ## [6.38.790] — 2026-04-29
 
 ### Roadmap mobile accordion
@@ -4885,8 +4332,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - Accordion state resets correctly when resizing above 600px
 
 ---
-
-
 ## [6.38.789] — 2026-04-29
 
 ### Roadmap fixes
@@ -4897,8 +4342,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - Mobile column padding tightened (22px → 16px/14px at ≤600px)
 
 ---
-
-
 ## [6.38.788] — 2026-04-29
 
 ### Roadmap updated
@@ -4908,24 +4351,18 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - All three items physically moved into the NOW column
 
 ---
-
-
 ## [6.38.787] — 2026-04-29
 
 ### Fix
 - Landing page nav: swapped Roadmap and Pricing to match page section order (Roadmap appears before Pricing in the page)
 
 ---
-
-
 ## [6.38.786] — 2026-04-29
 
 ### Fix
 - Landing page nav: moved IAM after Features (was appearing before Features)
 
 ---
-
-
 ## [6.38.785] — 2026-04-29
 
 ### Website updates
@@ -4938,8 +4375,6 @@ Full org-level table of all secure send links: entry name, creator, created/expi
 - Logo 28→24px, avatars 34→30px, entry name 13→12px font
 
 ---
-
-
 ## [6.38.745] — 2026-04-28
 
 Fixed vault scroll, pre-login /api/sessions 401, and +9 session badge.
@@ -4966,8 +4401,6 @@ This is a console noise only. Google's favicon API returns 404 for `account.post
 - `static/session-indicator.js` (fix carried from v6.38.744)
 
 ---
-
-
 ## [6.38.744] — 2026-04-28
 
 Fully fixed mobile infinite reload — removed broadcastAuthError from service worker.
@@ -4997,8 +4430,6 @@ The SW version string injected at serve time has been bumped from `6.38.743` to 
 - `static/sw-register.js` — listener comment updated; vault-active guard retained for safety
 
 ---
-
-
 ## [6.38.743] — 2026-04-28
 
 Fixed infinite reload loop on mobile (service worker was the actual cause).
@@ -5029,8 +4460,6 @@ Expanded the silent endpoint list from 2 entries to cover all endpoints that are
 - `static/sw.js`
 
 ---
-
-
 ## [6.38.742] — 2026-04-28
 
 Fixed infinite page refresh loop on /app and landing page CTAs opening login instead of register.
@@ -5060,8 +4489,6 @@ CTAs updated: nav, mobile nav, personal features, "For individuals", "For teams"
 - `landing.html`
 
 ---
-
-
 ## [6.38.740] — 2026-04-28
 
 Extension v1.0.10 — six new features added.
@@ -5100,8 +4527,6 @@ After autofilling from the popup, the confirmation toast now includes a "Copy to
 - `extension-src/hexvault-extension-v1_0_10.zip`
 
 ---
-
-
 ## [6.38.739] — 2026-04-28
 
 Extension security audit (v1.0.9) — three vulnerabilities fixed, feature suggestions noted.
@@ -5156,8 +4581,6 @@ Content scripts match `http://*/*` to support autofill on legacy HTTP sites. The
 - `extension-src/hexvault-extension-v1_0_9.zip`
 
 ---
-
-
 ## [6.38.738] — 2026-04-28
 
 Fixed "Planned" badge word-wrap on trust centre and security pages.
@@ -5178,8 +4601,6 @@ Fixed "Planned" badge word-wrap on trust centre and security pages.
 - `static/site/security.html`
 
 ---
-
-
 ## [6.38.737] — 2026-04-28
 
 Fixed "Necessary" badge clipping on cookies page and swept all site pages for similar issues.
@@ -5206,8 +4627,6 @@ Fixed "Necessary" badge clipping on cookies page and swept all site pages for si
 - `static/site/sub-processors.html`
 
 ---
-
-
 ## [6.38.736] — 2026-04-28
 
 Landing page text overflow fixes, responsive polish, and security audit findings addressed.
@@ -5252,8 +4671,6 @@ Landing page text overflow fixes, responsive polish, and security audit findings
 - `app.py`
 
 ---
-
-
 ## [6.38.735] — 2026-04-28
 
 Redesigned personal features section on landing page.
@@ -5271,8 +4688,6 @@ Replaced the entire section with a fully self-contained design using scoped `<st
 - `landing.html`
 
 ---
-
-
 ## [6.38.734] — 2026-04-28
 
 Full security audit — 10 vulnerabilities fixed across authentication, template injection, session management, and rate limiting.
@@ -5330,8 +4745,6 @@ Added a centralised `get_client_ip()` that wraps `request.remote_addr` (already 
 - `app.py`
 
 ---
-
-
 ## [6.38.733] — 2026-04-28
 
 Landing page rewritten to speak to both personal and team audiences.
@@ -5366,8 +4779,6 @@ The landing page was leading entirely with teams ("Your team's credentials", "St
 - `static/style.css`
 
 ---
-
-
 ## [6.38.732] — 2026-04-28
 
 DEV button hidden on login page and lock screen.
@@ -5386,8 +4797,6 @@ DEV button hidden on login page and lock screen.
 - `static/script.js`
 
 ---
-
-
 ## [6.38.731] — 2026-04-28
 
 Six IAM features added targeting both personal and team users.
@@ -5455,8 +4864,6 @@ Six IAM features added targeting both personal and team users.
 - `app.py`
 
 ---
-
-
 ## [6.38.730] — 2026-04-24
 
 Fixed onboarding tour not showing, plus replay support.
@@ -5479,8 +4886,6 @@ Fixed onboarding tour not showing, plus replay support.
 - `index.html`
 
 ---
-
-
 ## [6.38.729] — 2026-04-24
 
 Two fixes for organisation creation flow.
@@ -5502,8 +4907,6 @@ Two fixes for organisation creation flow.
 - `app.py`
 
 ---
-
-
 ## [6.38.728] — 2026-04-24
 
 Fixed sharp corner on the vault section.
@@ -5518,8 +4921,6 @@ Fixed sharp corner on the vault section.
 - `static/style.css`
 
 ---
-
-
 ## [6.38.727] — 2026-04-24
 
 2FA field now animates in when revealed after username/password submission.
@@ -5535,8 +4936,6 @@ Fixed sharp corner on the vault section.
 - `static/script.js`
 
 ---
-
-
 ## [6.38.726] — 2026-04-24
 
 Enterprise/team users with no org yet were hitting 403 errors on `/api/org/members` and `/api/org/folders` because the frontend was firing those requests before checking whether an org exists.
@@ -5560,8 +4959,6 @@ No 403s are generated in either path now.
 - `static/iam-nav.js`
 
 ---
-
-
 ## [6.38.725] — 2026-04-24
 
 Login page entrance animations now apply to all dynamically-injected elements.
@@ -5581,8 +4978,6 @@ All three now match the stagger timing of the static form elements (fields at .5
 - `static/biometric-auth.js`
 
 ---
-
-
 ## [6.38.724] — 2026-04-24
 
 Reverted all visual changes introduced in v719–v723 that were not intentional design decisions. Security and logic fixes from that range are preserved.
@@ -5616,16 +5011,12 @@ Reverted all visual changes introduced in v719–v723 that were not intentional 
 - `static/style.css`
 
 ---
-
-
 ## [6.38.723] — 2026-04-24
 
 ### Toolbar
 
 - `.vault-header` had no background and drew only a bottom-border, which rendered as a sharp-edged bar. Now a rounded card with the same 14px radius as the sidebar and row cards
 - `.search-bar` had the same underline-style border; removed. The input inside keeps its own rounded corners
-
-
 ## [6.38.722] — 2026-04-24
 
 The MY VAULT sidebar had `border-radius: 14px` but you couldn't see the left corners because its parent `.vault-section` had no padding, so the sidebar sat flush against the viewport edge.
@@ -5634,8 +5025,6 @@ The MY VAULT sidebar had `border-radius: 14px` but you couldn't see the left cor
 
 - Added 20px padding to `.vault-section` so the sidebar, folder panel, and main content all have breathing room
 - All four corners of the sidebar are now visible
-
-
 ## [6.38.721] — 2026-04-24
 
 Icon sweep batch 1 — vault list screen. Replaced the filled icons across the sidebar, toolbar, row actions, and row chips with outlined Lucide equivalents. Consistent 2px strokes, same proportions, same sizes.
@@ -5663,8 +5052,6 @@ Icon sweep batch 1 — vault list screen. Replaced the filled icons across the s
 - Breached chip, Duplicate chip, Old chip, Expired / Expires soon chips — all now outlined
 - 2FA badge — swapped from plain shield to shield-check (outlined)
 - Username and "Updated ago" meta-icons — outlined user and clock
-
-
 ## [6.38.720] — 2026-04-24
 
 Corner rounding is now driven by CSS variables. Bumps the default radius up a touch across most of the UI — softer cards, slightly more rounded buttons and chips. Deliberate one-offs (avatars, hero panels, pill tags) are untouched.
@@ -5675,8 +5062,6 @@ Corner rounding is now driven by CSS variables. Bumps the default radius up a to
 - Rewrote 249 of 401 `border-radius:` declarations to reference those variables
 - 77 deliberate one-offs (hero panels, pill tags, asymmetric card headers, avatars) stay as they were
 - To tweak further, change the values in `:root` once and it cascades; no individual rules to revert
-
-
 ## [6.38.719] — 2026-04-24
 
 Three fixes related to honeypots and clipboard permissions.
@@ -5691,8 +5076,6 @@ Three fixes related to honeypots and clipboard permissions.
 
 - `auto-lock-handler.js` was calling `navigator.clipboard.readText()` to verify the clipboard before clearing it, which newer Chrome flags as a Permissions-Policy violation
 - Dropped the readText path entirely — it now clears the clipboard blindly after 30 seconds, matching how other password managers behave
-
-
 ## [6.38.718] — 2026-04-24
 
 Rewrote the last four changelog entries so they don't read like an AI apologising. Kept the pill/section layout the page expects.
@@ -5701,8 +5084,6 @@ Rewrote the last four changelog entries so they don't read like an AI apologisin
 
 - v714, v715, v716, v717 now use short, past-tense, plain-English bullets under proper subsection headers
 - Older entries had their noise subsections stripped (Deploy / Verify / Risk / Sorry / Pattern / Long-term / Honest reflection blocks etc.) — the actual content stays
-
-
 ## [6.38.717] — 2026-04-24
 
 Stat cards used to go stale after some add/delete/edit paths. Fixed.
@@ -5710,8 +5091,6 @@ Stat cards used to go stale after some add/delete/edit paths. Fixed.
 ### Dashboard stats
 
 - `loadPasswords()` now always calls `updateStats()` at the end, so the cards and the security score ring reflect the current vault state regardless of which path triggered the reload
-
-
 ## [6.38.716] — 2026-04-24
 
 Honeypot handling got tidier. Fixed a harmless 401 spam on the login screen.
@@ -5731,8 +5110,6 @@ Honeypot handling got tidier. Fixed a harmless 401 spam on the login screen.
 
 - `showToast()` gained an optional duration argument and recognises a `warning` type (amber)
 - Existing callers unaffected
-
-
 ## [6.38.715] — 2026-04-23
 
 Cleaned up two Copy buttons that didn't match the rest of the modal button family.
@@ -5741,8 +5118,6 @@ Cleaned up two Copy buttons that didn't match the rest of the modal button famil
 
 - The Copy button in the AI Fix modal and the Copy Secret button in the 2FA setup modal were using off-palette blues with their own one-off styles
 - Both now match the `.btn-secondary` family — transparent bg, thin border, same height and radius as Cancel
-
-
 ## [6.38.714] — 2026-04-23
 
 Password-list icons got refreshed — the plain action icons are white now, and the AI Fix wand sits in a subtle purple chip so it's identifiable as the AI feature without shouting.
@@ -5753,8 +5128,6 @@ Password-list icons got refreshed — the plain action icons are white now, and 
 - AI Fix wand keeps white strokes and now has a soft purple background chip with a matching border
 - Wand is a proper 30px icon-slot — the bloated padding from the modal button rules is no longer bleeding through
 - Hover states preserved: wand brightens, the other icons pick up the existing lavender tint
-
-
 ## [6.38.713] — 2026-04-23
 
 ### AI Fix button now visible on Personal tier
@@ -5782,8 +5155,6 @@ Unchanged: Import/Export (up+down arrows, v711), Recycle Bin (trash can), Filter
 - `static/ai-password-fix.js` — removed render-time gate; added click-time gate + upgrade routing; replaced icon SVG path
 - `static/script.js` — removed outer tier check around `showAIFixButton` loop (L2864); every problematic password now gets the teaser button
 - `index.html` — keyboard shortcuts icon replaced
-
-
 ## [6.38.712] — 2026-04-23
 
 ### Audit-driven fix: dev mode no longer bypasses tier gates anywhere
@@ -5820,8 +5191,6 @@ Without this rule, the dev toolbar's tier preview is a lie: everything shows reg
 | `settings-handler.js` | 415 | Team Settings tab (fallback only) |
 
 Also updated the comment at `dev-toolbar.js:16` which misleadingly said "allows isPaidTier() bypass for testing" — the flag now only gates toolbar rendering.
-
-
 ## [6.38.711] — 2026-04-23
 
 ### Fix 1: Leave Test Family dev-toolbar button
@@ -5843,8 +5212,6 @@ Two of the icons in the My Vault toolbar were unclear at 15px:
 - **Keyboard shortcuts** — was a dense keyboard-grid SVG that rendered as visual noise at 15px (you described it as looking like a coffee cup). Replaced with a lightning bolt — universal "shortcut" sign, reads clean at small sizes.
 
 Other icons (Trash, Filter, Add Password, Lock) were already clear and unchanged.
-
-
 ## [6.38.710] — 2026-04-23
 
 ### What you saw
@@ -5871,8 +5238,6 @@ This is the same lesson as v695 when I pulled the `|| isDevModeActive` out of ia
 2. **Removed `isDevModeActive` bypass from `isPaidTier()`, `isTeamTier()`, `isEnterpriseTier()`, `hasTier()` in script.js.** Same reason — these delegate to `hasFeature()` which now respects the previewed tier.
 
 3. **Added a defensive "strict-tier feature" guard.** If a feature is family-only, enterprise-only, or team-or-enterprise (strict tier-products), the fallback `isProUser` check is skipped. Even in a weird load-order race, we never grant family_vault or team_vault on a "best guess" basis.
-
-
 ## [6.38.709] — 2026-04-23
 
 ### What went wrong
@@ -5900,8 +5265,6 @@ Parses both FEATURES dicts and fails the deploy if they don't match exactly. Wir
 
 **3. Family Vault UX fix:**
 When the backend returns "You are already in a family group", the frontend no longer toasts an error. It reloads the family info and shows the actual family state. Caught as a side-effect of testing — the ugly error wasn't a code bug but made debugging confusing.
-
-
 ## [6.38.707] — 2026-04-23
 
 ### Session B / Item 1: Bare except clauses narrowed
@@ -5927,8 +5290,6 @@ After: 0 bare excepts + 139 `except Exception:` = 139 total except-handlers
 ```
 150 passed, 25 warnings in 0.32s
 ```
-
-
 ## [6.38.706] — 2026-04-23
 
 ### Session B / Item 5 (complete): Remaining inline event handlers removed
@@ -5985,8 +5346,6 @@ Only things that still have inline-ish handlers are:
 | 6 — app.py blueprint split | deferred | needs dev env |
 
 Item 5 complete. Item 1 is next if we keep going. Item 6 I still don't recommend without a local dev environment.
-
-
 ## [6.38.705] — 2026-04-23
 
 ### Session B / Item 5 (partial): Inline event handlers in script.js removed
@@ -6031,8 +5390,6 @@ I'll sweep those in the next release. Shipping script.js alone first because it'
 ```
 
 Tests pass (they cover tier_logic, not DOM behaviour — but they confirm nothing in this release broke the tier-gating paths).
-
-
 ## [6.38.704] — 2026-04-23
 
 ### Session A / Item 3: Dev toolbar no longer overlaps the FAB
@@ -6078,8 +5435,6 @@ Zero JS logic change, zero backend change. Pure CSS.
 | 6 — Split app.py into blueprints | deferred | Session B |
 
 Session A shipped 4 releases that net-positive the codebase: better tier enforcement, a test suite that mechanically prevents regressions, one real paying-tier bug fixed (Team users with expired subs now downgrade correctly), dead code removed, load order fixed, and a dev UX irritant cleaned up.
-
-
 ## [6.38.703] — 2026-04-23
 
 ### Session A / Items 2b & 2c: Frontend tier-gate DRY + dead code removal
@@ -6123,8 +5478,6 @@ Three dictionaries and one decorator function. All were dead weight. Left a comm
 ```
 
 Still 150/150. The tests live on `tier_logic.py` so they protect the backend precisely, and the frontend now delegates to the same conceptual matrix.
-
-
 ## [6.38.702] — 2026-04-23
 
 ### Session A / Item 2a: Backend tier-gate consolidation (+ real bug fix)
@@ -6180,8 +5533,6 @@ Full suite ran clean before AND after the 8 replacements. The suite specifically
 - Team users qualify for Pro gates (prevents re-introducing the 12656 bug)
 - 'business' synonym normalizes to enterprise
 - None / empty / unknown tiers default to deny, not grant
-
-
 ## [6.38.701] — 2026-04-23
 
 ### Session A / Item 4: Test suite for tier capabilities
@@ -6238,8 +5589,6 @@ Runs in ~0.3 seconds. No DB, no Flask, no network.
 - **Item 3** — dev toolbar position so it stops overlapping password rows
 
 Each will ship as its own release (v702, v703, v704).
-
-
 ## [6.38.700] — 2026-04-22
 
 ### Systematic tier audit and capability-matrix fix
@@ -6293,8 +5642,6 @@ Wrote a unit test covering 20 (user_tier, required_tier) combinations. All pass:
 - `_TIER_ORDER` (line 2113) and the unused `require_tier` decorator (line 2115) are dead code — all real gating goes through `_require_tier`. Left in place to avoid scope creep; flagging for separate cleanup pass.
 - `static/ai-password-fix.js`, `settings-handler.js`, `onboarding-handler.js` still use raw tier lists instead of `hasFeature()`. They currently produce correct behaviour but aren't using the central source of truth. Flagged for a future DRY pass — not a correctness bug today.
 - 'business' as a tier string appears in some frontend lists — dead synonym, never stored in DB. Harmless.
-
-
 ## [6.38.699] — 2026-04-22
 
 ### CSP violations I caused in v697: fixed
@@ -6320,8 +5667,6 @@ I assumed Enterprise was a superset of Family and stacked `|| tier === 'enterpri
 ### Still not fixed
 
 - `static/script.js` has 9 other inline event handlers I haven't touched. They're pre-existing, not my regression. If any are visible-by-default they'll also throw CSP errors — worth a dedicated audit pass, but out of scope for this hotfix.
-
-
 ## [6.38.698] — 2026-04-22
 
 ### Fix: Sentry 429 RateLimitExceeded on /api/notifications
@@ -6351,8 +5696,6 @@ Flask-Limiter raises `RateLimitExceeded`. Flask returns it as a 429 response aut
 - Existing users stop getting 429s on normal reload patterns
 - Sentry stops flagging rate-limit hits as unhandled errors — they're expected behaviour
 - If a genuine abuse case hits the new 120/hr ceiling, the client gets proper JSON with retry info instead of a generic HTML error page
-
-
 ## [6.38.697] — 2026-04-22
 
 ### Two bugs from your screenshot
@@ -6384,8 +5727,6 @@ Does NOT delete the organisation itself; it just removes your membership. Fine f
 ### Dev toolbar now has
 
 Five tiers (Personal / Pro / Family / Team / Enterprise), three Trial States (Active / Expiring / Expired), 2FA Testing (Get TOTP Secret / Reset 2FA), and two reset actions (Reset Onboarding, Leave Test Org). Complete set for tier + state preview.
-
-
 ## [6.38.696] — 2026-04-22
 
 ### Landing nav alignment
@@ -6403,8 +5744,6 @@ The four sibling pages (FAQ, Privacy, Security, Status) — which you said look 
 Three-zone layout, brand/links/buttons naturally distribute.
 
 Only `landing.html` was affected. `download.html` and the shared CSS were already correct. No JS, no backend.
-
-
 ## [6.38.695] — 2026-04-22
 
 ### Undoing my mistakes from v693/v694
@@ -6448,8 +5787,6 @@ Rewrote the handler to directly activate `familyTabContent`, reveal the family v
 ### Apology
 
 This is the kind of bug I should've caught by thinking one step ahead when I wrote v693. I stacked `|| isDevModeActive` into the OR chains without checking what it would do to tier-based hiding. Sorry for the churn.
-
-
 ## [6.38.694] — 2026-04-22
 
 ### Family section invisible + AI Fix missing on Team: both fixed
@@ -6486,8 +5823,6 @@ return tier === 'pro' || tier === 'enterprise' || tier === 'family' || tier === 
 ```
 
 Backend `hexguard_chat` (app.py:18419) and `require_paid` decorator (app.py:2284) both already allow Team — this was a pure frontend gap. Any Team user with a genuine subscription was paying for AI Fix and never seeing the button.
-
-
 ## [6.38.693] — 2026-04-22
 
 ### Team Vault hidden for Enterprise dev-mode testing: fixed
@@ -6519,8 +5854,6 @@ Previously, clicking Team/Enterprise in the dev toolbar updated the tier in the 
 Clicking into Team Vault while on Enterprise tier *without a real org* still tries to fetch `/api/org/folders` and will show empty/warning state because `org_id` is null. The UI is now REACHABLE for testing, but you can't actually create shared credentials without a real org.
 
 If you want to test Team Vault end-to-end (not just its visibility), I'd need to add a "Create test org" dev button that POSTs to `/api/org/create` with a fake name. Flagging this for a future session — didn't do it here because it touches org-creation / crypto-key-generation / membership-invite code paths that deserve proper thought.
-
-
 ## [6.38.692] — 2026-04-22
 
 ### HexGuard badge now reflects your actual tier
@@ -6549,8 +5882,6 @@ Uses the shorter abbreviation for longer tier names so the badge doesn't overflo
 2. **Stat card math looks redundant.** "Breached: 1" and "Weak: 1" on 2 total passwords implies the same password is counted in both — which is accurate if the password is both breached AND weak, but the UI presents them as separate counts. Minor reporting clarity issue, not a bug.
 
 3. **Security Score "65 / Fair"** when 1 of 2 passwords is breached might be generous — scoring logic is what it is. Separate concern.
-
-
 ## [6.38.691] — 2026-04-22
 
 ### Dev mode now gated by client IP (loopback + LAN), not env vars
@@ -6595,8 +5926,6 @@ Tested against 12 allow cases (all loopback + RFC1918 ranges + localhost literal
 ### Related cleanup
 
 Dropped the old `APP_URL` string-match fallback used by `dev_status` and `dev_toggle` — now both use the same `_is_local_ip()` helper as the main gate. One source of truth.
-
-
 ## [6.38.690] — 2026-04-22
 
 ### Dev toolbar: added Team tier + Trial State controls
@@ -6638,8 +5967,6 @@ Ran a full sweep. Clean on major fronts:
 - No unparameterised SQL with user input (two f-string queries use schema-controlled values only)
 
 **One thing worth cleanup later:** 50 bare `except:` clauses in `app.py`. Many are legitimate graceful-degradation patterns but some are hiding real bugs. Not urgent — logging a separate issue.
-
-
 ## [6.38.689] — 2026-04-22
 
 ### Fix: password rows shifting right on hover
@@ -6658,8 +5985,6 @@ It was supposed to be a "hover to quickly tick an item" shortcut, but it conflic
 **Fix:** removed the hover-reveal rule. The bulk-select checkbox now only appears when the user explicitly enters bulk mode via the toolbar button (which is how it's supposed to work). No layout shift on hover.
 
 One-line deletion in `style.css`. No JS changes. No HTML changes. Bulk-select toolbar still works identically because it toggles `display` directly from JS.
-
-
 ## [6.38.688] — 2026-04-22
 
 ### Vault row cleanup: collapse redundant buttons into the (already-wired) 3-dot menu
@@ -6674,8 +5999,6 @@ So the real UX issue wasn't a dead menu — it was redundancy. Rows showed 7-8 i
 Row went from 7-8 buttons to 5. Still single-click for the three most frequent actions (copy username, copy password, peek). Everything else moves to the dropdown.
 
 No behaviour changes — all removed actions still work, just via the menu. No data loss, no new code paths. One render-function change in `script.js`, nothing else.
-
-
 ## [6.38.687] — 2026-04-22
 
 ### Upgrade prompts were silently broken across the entire app
@@ -6697,8 +6020,6 @@ A free user clicking HexGuard got told "Upgrade to Pro", clicked "Upgrade Now", 
 
 - **Strength bar finally works** — `checkStrength()` was returning `color: 'var(--success)'` and `color: 'var(--danger)'`, neither of which is defined as a CSS variable. Browser resolved to transparent. Fixed with literal hex (`#00e5a0` / `#ff4d6d`).
 - **Entry row duplicate eye icon** — "View Details" used the same eye SVG as "Peek". Changed View to a document-with-info icon.
-
-
 ## [6.38.686] — 2026-04-22
 
 ### Strength bar finally works (root cause found after 4 attempts)
@@ -6717,8 +6038,6 @@ Changed the "view" button to a document/info icon so the two are visually distin
 
 - The 3-dot `data-action="menu"` button at `script.js:2706` has no click handler anywhere in the codebase. It's a dead button on every row. Consolidating the View/Share/Edit/Delete buttons into it would require first wiring the menu, which is a bigger change than should ship in a hotfix. Left alone for now; open a cleanup task later.
 - `emergency-passkey.js:133` also uses `var(--danger)` for an error text colour. Low-impact (error path only) — left alone, will address if user reports.
-
-
 ## [6.38.685] — 2026-04-22
 
 ### Generator button + strength bar: finally actually works
@@ -6738,8 +6057,6 @@ Changed the "view" button to a document/info icon so the two are visually distin
 ### Unrelated but tidied
 - Removed leftover `.v683-bak` files accidentally left in the tree from v684 packaging.
 - `scripts/find_undefined_names.py` and `scripts/csp-audit.py` both still green.
-
-
 ## [6.38.684] — 2026-04-22
 
 ### New onboarding experience: welcome modal + non-skippable spotlight tour
@@ -6797,8 +6114,6 @@ Existing `/api/dev/reset-onboarding` endpoint and dev toolbar button continue to
 - If the spot-step list ends up empty (all targets missing), the handler skips directly to the completion card so the user isn't stuck.
 - Handler bails early if `window.forcedSetupMode` is true — doesn't interrupt the mandatory 2FA setup flow.
 - Tier detection uses `window.currentUserTier` (the same pattern `settings-handler.js` and `iam-nav.js` use), plus falls back to `window.currentUserOrgId` and dev mode.
-
-
 ## [6.38.684] — 2026-04-22
 
 ### Unified onboarding: welcome modal + spotlight tour + non-skippable gate
@@ -6870,8 +6185,6 @@ After deploying, reset your onboarding state (dev toolbar has a "Reset onboardin
 2. Click the dark backdrop outside the modal → nothing happens
 3. Look for a close button → there isn't one
 4. Only way out: click Next through every step, then "Go to my vault" on the completion card
-
-
 ## [6.38.683] — 2026-04-22
 
 ### Empty vault "Add Password" button STILL below the fold: third duplicate rule found
@@ -6894,8 +6207,6 @@ Plus `.empty-state.show` didn't specify `justify-content`, so the card verticall
 ### Why this kept happening
 
 `grep -n "^\.empty-state" style.css` reveals the cascade shape. My v682 grep was not exhaustive because I wrote the `str_replace` against specific surrounding content that matched only two of three rules. Next time I should run `grep -c` to count and compare against count of `str_replace` applications before declaring it done.
-
-
 ## [6.38.682] — 2026-04-22
 
 ### Four UI bugs found during live use of v681 + one correction to a previous "fix"
@@ -6923,8 +6234,6 @@ For each reported bug:
 4. Fixed at the real layer, not a layer that sounded plausible.
 
 Caught two dead-code bugs (`genStrengthFill` / `genStrengthLabel` never existed) and one CSS duplicate (`.empty-state` declared twice, both with the same bug) that previous releases had kept missing.
-
-
 ## [6.38.681] — 2026-04-22
 
 ### Profile picture upload broken: 1MB global body limit rejected everything
@@ -6949,8 +6258,6 @@ Three layers of size enforcement, from tightest to loosest:
 - **Client**: `file.size > 4 * 1024 * 1024` → clear toast rejection.
 - **Server handler**: `len(image_data) > 5 * 1024 * 1024` → JSON `{error: "Image too large (max 5MB)"}` with 400.
 - **Flask global**: `MAX_CONTENT_LENGTH = 6MB` → Werkzeug rejects with 413, handler produces JSON via new errorhandler.
-
-
 ## [6.38.680] — 2026-04-22
 
 ### Post-2FA-setup UX fix + console-error cleanup + button-size pass
@@ -6977,8 +6284,6 @@ Both together — no more console noise for personal-tier users on login.
 Main CTA button (`.btn-primary`) was `16px 24px` padding with `15px` font — producing ~52px tall full-width blocks that felt oversized, especially in settings and modals. Tightened to `12px 20px` padding with `14px` font. Border radius 12px → 10px. Box shadow spread halved. Hover lift reduced from `translateY(-2px)` to `translateY(-1px)`. Overall the primary action is still clearly the focal point without dominating the layout.
 
 Auxiliary button styles (`.btn-primary-action` at 38px, `.btn-social`, `.btn-icon`, `.btn-ghost`) already sized correctly — untouched.
-
-
 ## [6.38.679] — 2026-04-21
 
 ### Password reset "400 Bad Request": actually a success masquerading as an error
@@ -7013,8 +6318,6 @@ Either fix alone resolves the symptom. Both together make the client/server cont
 ### Diagnosing this class of bug in future
 
 A user-reported "400" in the DevTools console is not always a server error. When the timeline shows 200 → 400 on identical payloads seconds apart, the likely story is: success response had an unexpected shape, client misclassified it as failure, user retried. Always inspect the nginx/gunicorn access log timeline before debugging the endpoint.
-
-
 ## [6.38.679] — 2026-04-21
 
 ### 2FA setup returning 500 Internal Server Error: typo in `hash_backup_codes`
@@ -7044,8 +6347,6 @@ While fixing the first typo I ran an AST scan for module-attribute-calls-on-neve
 Both of these are exactly the kind of bug that never fires in happy-path testing because nothing reaches the code unless you specifically exercise 2FA setup or repeated-admin-TOTP-failure. They're also exactly the kind of bug a CI-level `python -c "import app"` or smoke-test suite would have caught instantly — the NameError fires the first time the code path runs.
 
 Added the AST scan I used for this audit to `scripts/find_undefined_names.py` so it can be run pre-release. Walks the whole AST, collects every assignment target + import, then flags any `Name.attr` pattern where the `Name` wasn't assigned anywhere. One-shot false-positive-free scan. Takes 200ms to run.
-
-
 ## [6.38.678] — 2026-04-21
 
 ### `/api/request-password-reset` returning 500: function shadowing bug
@@ -7074,8 +6375,6 @@ Left a multi-line comment at the old wrapper's location explaining why it was re
 ### Why this wasn't caught in 6.38.677 testing
 
 Static parse and CSP-audit both passed — the code is syntactically valid Python. A runtime test against the live `/api/request-password-reset` endpoint would have caught it immediately. This is the third bug in four releases that a smoke-test harness would have caught before users saw it. Hardening note remains open: a `smoke-test.sh` that POSTs to the top 5–10 endpoints with realistic inputs would pay for itself after one avoided incident.
-
-
 ## [6.38.677] — 2026-04-21
 
 ### Password reset flow: fixed `/api/verify-reset-token` 400 "Invalid reset token"
@@ -7139,8 +6438,6 @@ This bug pre-dates 6.38.674 — it's been broken as long as `email_service.py`'s
 2. Click the reset link in the email. Page should show the new-password form (not "invalid or expired").
 3. Submit a new password. Should succeed, redirect to sign-in.
 4. For org admins: try "Force reset" on a test member account. The user should receive a working link.
-
-
 ## [6.38.676] — 2026-04-21
 
 ### Resend verification email: in-page form with cooldown
@@ -7188,8 +6485,6 @@ The existing server endpoint (`/api/resend-verification`) always returns 200 wit
 4. Refresh the page — button should still be disabled if within 60s. Count resumes from the correct remaining time.
 5. Wait 60s — button re-enables, label restored to "Send verification email".
 6. Test with an invalid email format — inline error below the button, no server request made.
-
-
 ## [6.38.675] — 2026-04-21
 
 ### CSP hash audit: fixed 3 missing inline-script hashes, removed 2 stale ones
@@ -7220,8 +6515,6 @@ No CI or pre-deploy check caught this. Errors surfaced only in the user's browse
 ### Hardening note
 
 This is one of the four hardening items the user asked about after the 672 schema rollback bug. It's the "automated check that would have caught this before production" pattern — small script, runs in milliseconds, catches a whole class of silent failure. The remaining three hardening items (smoke test script, staging env, boot-time schema assertion) are still on the table and will come as you want them.
-
-
 ## [6.38.674] — 2026-04-21
 
 ### Two unrelated production fires: fixed
@@ -7260,8 +6553,6 @@ Look for these log lines to confirm the fix is live:
 ```
 
 The second one is **expected** occasionally — it means the safety net caught a dead connection and recycled it. If you see 3/3 attempts failing repeatedly, Postgres itself is unhealthy and needs investigation.
-
-
 ## [6.38.673] — 2026-04-21
 
 ### Email sending broken by gevent/ssl monkey-patch ordering
@@ -7279,8 +6570,6 @@ We'd been ignoring that warning for ages. Turns out the half-patched state is sp
 **Fix.** Moved `from gevent import monkey; monkey.patch_all()` to line 9 of `gunicorn.conf.py`, before `import os` and before gunicorn reads any other config. Gunicorn imports the config file first (before preload), so the patch runs before `app.py` is imported, before `ssl` is imported, before any cached-module shenanigans can happen. Workers fork already-patched.
 
 Verified with a real Postmark HTTPS round-trip — 503 response received in 0.2s instead of RecursionError after 1000 frames.
-
-
 ## [6.38.672] — 2026-04-21
 
 ### CRITICAL BUGFIX: Fresh-database schema init silently rolled back every table
@@ -7328,8 +6617,6 @@ On next boot, `setup_database()` will create every table correctly, logins will 
 ### Credit
 
 Operator caught this by actually trying to log in after a `--fresh` deploy instead of just trusting the green health check. The app was lying about its own migration state. Lesson logged — `Multi-tier schema migrations applied` now means "the function returned without raising," not "the schema actually exists." Future hardening could add a post-migration assertion that the `users` table is queryable.
-
-
 ## [6.38.671] — 2026-04-21
 
 ### Complete CSP inline-script audit + Sentry init refactor
@@ -7367,8 +6654,6 @@ Benefits:
 ### Verification
 
 Python audit confirms: 9 of 9 remaining inline scripts are in the CSP allow-list; 0 remaining inline scripts contain Jinja interpolation. Future `APP_VERSION` bumps will not produce CSP errors.
-
-
 ## [6.38.670] — 2026-04-21
 
 ### Hotfix round 2: nav overlap + TOC sticky-positioning regression
@@ -7398,8 +6683,6 @@ Cause: `body { overflow-x:hidden }` in all 7 TOC-bearing pages (privacy, terms, 
 Fix: replaced `overflow-x:hidden` with `overflow-x:clip` across all 7 pages. `overflow-x:clip` prevents horizontal scrollbars from rogue wide elements (same visual effect) but **does not** promote body to a scroll container and does not trigger the implicit `overflow-y:auto`. Sticky positioning now works as originally intended. Browser support is universal in 2026 (Chrome 90+, Safari 16+, Firefox 81+), so no compatibility fallback needed.
 
 **This was a subtle pre-existing bug.** It wasn't introduced by the TOC work in 6.38.668 — the sticky never worked on these pages since they were written. Operator noticed it only because I promised in the 668 changelog that the TOC would be visible while scrolling.
-
-
 ## [6.38.669] — 2026-04-21
 
 ### Fix: TOC JS error, CSP hash drift, landing nav wrap
@@ -7433,8 +6716,6 @@ Fix in `landing.html`:
 - Raised the hamburger breakpoint from `max-width:800px` to `max-width:1024px`. Below 1024 is now hamburger territory, which cleanly covers tablets and awkward widths. Desktop 1025+ keeps the full nav, comfortably.
 
 `index.html` and `static/site/*.html` have different nav patterns (`.nav-links` / `.nav-cta`, not `.nlinks` / `.nbtns`) and were not affected.
-
-
 ## [6.38.668] — 2026-04-21
 
 ### Mobile TOC drawer + small responsive fixes
@@ -7458,8 +6739,6 @@ Detail:
 **What I didn't change.**
 - The three different TOC markup patterns (`.legal-toc` / `.toc-wrap` / `.toc-sticky`) across 7 pages are not consolidated. Each page still has its own inline TOC styles. Consolidating would mean moving the ~15 lines of per-page styles into `site-shared.css` and stripping them from each page — mechanical but risky because the surrounding layouts differ. Deferred.
 - No cache-busters added to `site.js` or `site-shared.css` in page `<link>`/`<script>` tags. `app.py::serve_static` sets `Cache-Control: no-cache, no-store, must-revalidate` on every CSS and JS file, so changes propagate on next pageview without a query-string bump.
-
-
 ## [6.38.666] — 2026-04-21
 
 ### Cloud backup feature-flag gate
@@ -7480,8 +6759,6 @@ Detail:
 ### How to flip it on (for the operator)
 
 **Note on per-provider flipping.** The current flag is all-or-nothing across all three providers. If Google Drive is ready but Dropbox isn't, every provider's Connect button goes live or stays off together. In practice this is fine — `provider_configured()` still guards each provider individually at the `/connect` call, so an un-registered provider returns the existing `setup_required` error. But if you want partial rollout, a follow-up could check each provider's configured status and disable individual buttons accordingly.
-
-
 ## [6.38.665] — 2026-04-21
 
 ### Browser extension v1.0.8 release + privacy policy update
@@ -7513,8 +6790,6 @@ Renumbering: previous §7 (Your rights) → §8, §8 (Cookies) → §9, §9 (Dat
 **Orphaned `privacy-policy.html` at repo root.** The file exists but no Flask route serves it — `@app.route('/privacy-policy')` is a 301 redirect to `/privacy`, which renders `static/site/privacy.html`. The root file is stale (still claims PBKDF2 with 250,000 iterations, which was superseded by Argon2id in 6.38.661) and should be deleted in a follow-up to prevent future edits going to the wrong place. Not deleted this release to keep the scope of changes minimal.
 
 **PBKDF2 references may linger in other static pages.** Since the end-to-end Argon2id migration completed in 6.38.661–662, any remaining copy in `security.html`, `trust.html`, `faq.html`, or marketing pages that says "PBKDF2" needs a sweep. Not done this release; flagged for follow-up.
-
-
 ## [6.38.664] — 2026-04-20
 
 ### Static audit for race conditions, timing oracles, auth state machines
@@ -7540,8 +6815,6 @@ Focused read-only review of all login paths, session-creation sites, and state-m
 **Admin login is bcrypt-only (LOW).** Admin `password_hash` is always generated via direct `bcrypt.hashpw` (never via `hash_pwd`) and verified via `bcrypt.checkpw` (not `verify_pwd`). Consistent today, but fragile — any admin row manually updated to an argon2id hash would fail to login with an error. Consider switching admin paths to use the unified `verify_pwd` and `hash_pwd` for consistency.
 
 **What this audit did NOT do.** I did not: execute timing measurements (sandbox has no network, no real DB, and shared-container timing is unreliable), run genuine concurrent-load fuzz testing (needs real Postgres + hours of iterations), or exhaust the auth state-machine space (SSO + WebAuthn + magic-link + recovery-code flows need to be enumerated and their transition edges fuzzed against real backing services). A human pentester is still the right way to cover these. This changelog entry is a read-only static pass that found what could be found by inspection.
-
-
 ## [6.38.663] — 2026-04-20
 
 ### Content-Security-Policy is now enforced on every response
@@ -7567,8 +6840,6 @@ Focused read-only review of all login paths, session-creation sites, and state-m
 ### What this actually prevents
 
 An XSS bug that somehow lands user-controlled HTML in (for example) a credential name rendered back to an admin would have previously executed any `<script>` tag it injected. Now the browser refuses to run anything that isn't from `'self'` or one of the registered hashes. Each inline-script-returning route is now explicitly allowlisted by its SHA-256 hash; any modification to the script body invalidates the hash and the script silently refuses to run until the hash is regenerated — which means copy-paste XSS into those page bodies doesn't execute either.
-
-
 ## [6.38.662] — 2026-04-20
 
 ### Secure Send passphrase mode: PBKDF2 → Argon2id
@@ -7582,11 +6853,7 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 **Payload** — server-side row shape unchanged. The `salt` column (added in 6.38.659) keeps working. A new `kdf` field on the POST body is accepted but not required — the recipient simply derives with the documented parameters.
 
 **Migration note:** passphrase-protected sends created in 6.38.661 or earlier used PBKDF2 and will fail to decrypt in 6.38.662. Since you have no customers, this is a zero-impact break. If you want a cleanup SQL: `DELETE FROM secure_sends WHERE salt IS NOT NULL AND created_at < '2026-04-20';`
-
-
 ## [6.38.661] — 2026-04-20
-
-
 ## [6.38.660] — 2026-04-20
 
 ### Follow-up fixes from pass-3 audit: KEK layer + SAML hardening
@@ -7615,8 +6882,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
   - Handles user-initiated logout: builds a SAML `LogoutRequest` via `auth.logout()` and redirects to the IdP
   - Handles IdP-initiated SLO: validates incoming `SAMLRequest` / `SAMLResponse` via `auth.process_slo()` and clears the session
   - Always falls back to clearing the local session and redirecting to `/app` if any step fails — users should never be stuck logged in
-
-
 ## [6.38.659] — 2026-04-20 (superseded entry — see pass-3 additions below)
 
 ### Pass 3: Secure Send / SSO / API tokens / Emergency access / Cloud backup / SCIM / Webhooks / Service accounts
@@ -7685,8 +6950,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 ### Structural improvements
 - `app.py` — added `db.transaction()` context manager so multi-statement writes can be truly atomic. The pre-existing `execute()` method opens a fresh connection per statement, which silently defeats `SELECT FOR UPDATE` and leaves partial-failure windows in multi-statement write paths
 - `app.py` (execute_pending_action) — refactored to use `db.transaction()` so all state changes for an MPA action either fully commit or fully roll back. Fixed latent duplicate-notification bug where the "Executed" notification was dispatched on both success and failure paths due to an unindented line outside the try/except
-
-
 ## [6.38.658] — 2026-04-20
 
 ### Fix Add Entry modal: UI overhaul
@@ -7694,8 +6957,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `static/style.css` — fixed `.password-toggle` CSS (`appearance:none`, no border/background/box-shadow); added `.pm-gen-tray` slide animation and `.pm-gen-card` styles
 - `static/script.js` — restored 3-step wizard navigation JS with checkmark on completed steps; generate button toggles tray open/close and calls `generatePassword()` in one handler; Use button closes tray and flashes input green
 - `static/hv-features.js` — disabled `injectPassphraseToggle()` call which was injecting a Password/Passphrase tab bar below the generate button
-
-
 ## [6.38.653] — 2026-04-20
 
 ### UI polish: remove emojis throughout
@@ -7704,14 +6965,10 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `static/biometric-auth.js` — removed ✅ emoji from toast messages
 - `static/admin-panel.js` — removed ✓ emoji from reset confirmation
 - `desktop/main.js` — tray menu Lock/Unlock items no longer use 🔒/🔓 emoji
-
-
 ## [6.38.652] — 2026-04-20
 
 ### Fix constant page reload loop
 - `static/sw.js` — service worker was broadcasting `HV_AUTH_ERROR` on every 401 including from `/api/vault-integrity/status`, which is called on every page load before login; `sw-register.js` redirects to `/app` on `HV_AUTH_ERROR` causing an infinite loop; fixed by suppressing the broadcast for endpoints that legitimately return 401 when unauthenticated
-
-
 ## [6.38.651] — 2026-04-17
 
 ### Fix tray / quit / lock / shortcut: full main.js rewrite
@@ -7720,46 +6977,34 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Tray lock state: tray now correctly reflects vault locked/unlocked state in real time
 - Desktop shortcut: single-instance second-instance handler ensures window is shown and focused; tray click (single) also shows window on Windows
 - Keyboard shortcuts fixed: before-input-event handler cleaned up
-
-
 ## [6.38.650] — 2026-04-17
 
 ### Fix tray lock state + installer progress bar + shortcut
 - `desktop/main.js` — tray was showing 'Vault is locked' incorrectly; added `did-finish-load` handler that injects event listeners into the page for `hv:lock` and `hv:unlock` events; these send IPC to main process which updates `vaultLocked` and redraws the tray menu
 - `desktop/main.js` — added `ipcMain.on('vault:locked')` and `ipcMain.on('vault:unlocked')` handlers
 - `desktop/installer-app/installer.html` — progress bar now full width with 10px height, glow effect, cubic-bezier transition; percentage text larger and purple; install log full width
-
-
 ## [6.38.649] — 2026-04-17
 
 ### Fix taskbar + desktop shortcut: root cause
 - `desktop/main.js` — added `autoHideMenuBar: true` directly to BrowserWindow constructor options so it takes effect before the window is shown, not after
 - `desktop/installer-app/installer-main.js` — root cause of missing shortcut: when installer runs as admin, `os.homedir()` returns the admin account's home directory (e.g. `C:\Users\Administrator\Desktop`), not the logged-in user's; switched to `[Environment]::GetFolderPath('Desktop')` and `GetFolderPath('Programs')` via PowerShell which always resolve to the correct user's folders regardless of elevation; applied same fix to uninstaller paths
-
-
 ## [6.38.648] — 2026-04-17
 
 ### Fix taskbar + desktop shortcut
 - `desktop/main.js` — replaced `Menu.setApplicationMenu(null)` with `setMenuBarVisibility(false)` + `setAutoHideMenuBar(true)`; null menu broke Windows taskbar right-click context; now menu is hidden visually but functional (Alt key reveals it)
 - `desktop/main.js` — minimal Windows menu kept with Lock Vault, About, Check for Updates, Quit
 - `desktop/installer-app/installer-main.js` — `makeShortcut` now also calls `Unblock-File` on the `.lnk` file itself; Windows was blocking the shortcut from the internet zone same as the exe
-
-
 ## [6.38.647] — 2026-04-17
 
 ### Remove Windows menu bar from desktop app
 - `desktop/main.js` — `Menu.setApplicationMenu(null)` on Windows/Linux; the native File/Edit/View/Window menu bar is gone; macOS keeps its menu bar (required for system keyboard shortcuts and conventions)
 - `desktop/main.js` — added `before-input-event` handler on Windows to register Ctrl+C/V/X/Z/A/+/-/0, Ctrl+Shift+I (DevTools), Ctrl+Shift+L (lock vault) since these rely on the menu bar on macOS but need explicit handling on Windows without one
-
-
 ## [6.38.646] — 2026-04-17
 
 ### Desktop installer + app: full feature set
 - `app.py` — added `/api/desktop-version` endpoint (exempt from auth) for auto-update checks; returns current version, download URL, and release notes URL
 - `desktop/installer-app/installer-main.js` — full rewrite with: uninstaller script (`Uninstall.cmd`) written to install directory; `UninstallString` registry key pointing to it so Add/Remove Programs works; uninstall shortcut in Start Menu; Unblock-File step after extraction; HKCU registry (no admin needed); version synced to `APP_VERSION`
 - `desktop/package.json` — version set to `1.0.0`, description and author added
-
-
 ## [6.38.646] — 2026-04-17
 
 ### Desktop app: full feature pass
@@ -7767,288 +7012,202 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `desktop/installer-app/installer-main.js` — version read from package.json and sent to renderer; uninstaller created during install (`Uninstall HexVault.cmd` + `Uninstall.ps1`); UninstallString written to registry so Add/Remove Programs works; `hexvault://` deep link protocol registered in HKCU; progress messages include file size
 - `desktop/installer-app/installer.html` — version number dynamically updated from main process
 - `app.py` — added `/api/desktop-version` endpoint returning current desktop package.json version for auto-update checks
-
-
 ## [6.38.645] — 2026-04-17
 
 ### Fix password save 422 + HIBP recursion error
 - `app.py` — password save was returning 422 because `strength_score` defaults to 0 when not sent by frontend, and the org policy check interpreted 0 as "weak password" even for users with no org; now only enforces the policy when `strength_score` is explicitly included in the payload with a value > 0
 - `app.py` — HIBP realtime check was crashing with `maximum recursion depth exceeded` due to gevent ssl monkey-patch conflict; added explicit `RecursionError` catch so it returns gracefully instead of erroring
-
-
 ## [6.38.644] — 2026-04-17
 
 ### Security fix: prevent credentials appearing in server logs
 - `app.py` — added `strip_sensitive_query_params` before_request handler; if `password`, `token`, `secret` or similar params ever appear in a GET URL (e.g. browser form resubmission), the handler immediately redirects to the clean URL before gunicorn logs the request; prevents credential exposure in access logs
-
-
 ## [6.38.643] — 2026-04-17
 
 ### Fix constant refresh loop: root causes
 - `app.py` — added `vault_locked`, `vault_locked_at`, `vault_lock_reason` columns to startup DB migration; these were missing causing a DB error on every authenticated API request which triggered the error handler redirect loop
 - `app.py` — `require_auth` vault lock check now catches the missing-column error and runs the migration inline rather than silently swallowing it
 - `index.html` — added `method="post" action="/api/login"` to loginForm; browser was resubmitting form as GET on page reload, exposing credentials in the URL (/app?username=...&password=...)
-
-
 ## [6.38.642] — 2026-04-17
 
 ### Fix login refresh loop + changelog not updating
 - `app.py` — reverted error handlers (404/500/403) back to `redirect('/')`; serving `index.html` directly was intercepting login API responses and causing a refresh loop on the login screen
 - `CHANGELOG.md` — fixed 31 entries with `-e ` prefix caused by `echo -e` in version bump script; this was breaking the changelog parser on the updates page
 - Version bump now uses `printf` instead of `echo -e` to avoid the issue recurring
-
-
 ## [6.38.641] — 2026-04-17
 
 ### Fix constant refresh: SW 524 timeout root cause
 - `static/sw-register.js` — removed `reg.update()` call; this was forcing a fetch of `sw.js` on every single page load which was hitting Cloudflare 524 timeouts and causing reload loops; browser handles SW update checks automatically without it
 - `static/sw.js` — removed `skipWaiting()`; when a new SW installed it was immediately taking control via skipWaiting + clients.claim, forcing all open tabs to reload
 - `app.py` — added `Cache-Control: no-cache` header for `/sw.js` so browser validates the file freshness with a conditional request (304 if unchanged) rather than downloading it every time
-
-
 ## [6.38.640] — 2026-04-17
 
 ### Fix constant refresh + desktop shortcut
 - `static/sw-register.js` — skip service worker registration when running in Electron (detected via `navigator.userAgent.includes('Electron')`); the SW's `skipWaiting` + `clients.claim` was causing the page to reload every time a new SW version activated
 - `desktop/installer-app/installer-main.js` — rewrote `makeShortcut` to use inline `powershell -Command` instead of writing a `.ps1` file; .ps1 files downloaded from the internet are blocked by ExecutionPolicy on most Windows systems even with `-ExecutionPolicy Bypass`
-
-
 ## [6.38.639] — 2026-04-17
 
 ### Fix installer path not showing
 - `desktop/installer-app/installer-main.js` — send default install path via `installer:pathUpdate` on `did-finish-load`; added `installer:getPath` IPC handler for renderer to request it
 - `desktop/installer-app/installer.html` — request path on `DOMContentLoaded` as fallback
-
-
 ## [6.38.638] — 2026-04-17
 
 ### Fix HexVault.exe blocked after install
 - `desktop/installer-app/installer-main.js` — after extracting app files, runs `Unblock-File` on all extracted files to remove the Mark of the Web (zone identifier) that Windows attaches to downloaded files; this was silently preventing double-click launch without admin; install location reverted to `Program Files` (correct for IT-deployed enterprise installs)
-
-
 ## [6.38.637] — 2026-04-17
 
 ### Fix desktop app: no admin rights required
 - `desktop/installer-app/installer-main.js` — changed default install directory from `Program Files` to `LocalAppData` (`C:\Users\<n>\AppData\Local\HexVault`); writing to LocalAppData requires no admin rights so any user can install and launch
 - `desktop/installer-app/installer-main.js` — changed registry key from `HKLM` (requires admin) to `HKCU` (per-user, no admin needed) for Add/Remove Programs entry
 - `desktop/package.json` — reverted `requestedExecutionLevel` back to `asInvoker`
-
-
 ## [6.38.636] — 2026-04-17
 
 ### Fix HexVault.exe requiring manual Run as administrator
 - `desktop/package.json` — changed `requestedExecutionLevel` from `asInvoker` to `requireAdministrator`; Windows will now show a UAC prompt on double-click instead of silently failing to launch from Program Files
-
-
 ## [6.38.635] — 2026-04-17
 
 ### Fix constant refresh loop
 - `app.py` — error handlers (404, 500, 403, unhandled exception) were doing `redirect('/app')` which caused a redirect loop when any error occurred on the /app route; changed to `_serve_html('index.html')` directly — no redirect, no loop
-
-
 ## [6.38.634] — 2026-04-17
 
 ### Fix desktop browser open + shortcut not working
 - `app.py` — 404, 500, 403 error handlers all redirected to `'/'`; in Electron any server error on startup triggered will-navigate → browser open; changed all to `'/app'`
 - `desktop/installer-app/installer-main.js` — rewrote completely; switched shortcut creation from VBScript to PowerShell (`New-Object -ComObject WScript.Shell`) which handles spaces in paths reliably; fixed syntax error from previous duplicate function
-
-
 ## [6.38.633] — 2026-04-17
 
 ### Fix desktop app browser opening: all root redirects fixed
 - `static/auto-lock-handler.js` — vault lock redirect `window.location.href = '/'` → `'/app'`
 - `static/settings-handler.js` — account deletion redirect `window.location.href = '/'` → `'/app'`
 - `index.html` — auth screen HexVault logo link `href="/"` → `href="/app"` (clicking logo was immediately triggering will-navigate to / on app startup)
-
-
 ## [6.38.632] — 2026-04-17
 
 ### Debug desktop browser open + fix about:blank
 - `desktop/main.js` — added console logging to `setWindowOpenHandler` and `will-navigate` so next rebuild will show exactly which URL triggers the browser; added `about:blank` exception so print dialogs work
-
-
 ## [6.38.631] — 2026-04-17
 
 ### Fix desktop app opening browser window: root causes found
 - `static/sw-register.js` — auth error handler was redirecting to `'/'` (landing page); in Electron this triggered will-navigate → browser open; changed to `'/app'`
 - `static/script.js` — backup codes print used `window.open('','','width=600...')`; in Electron setWindowOpenHandler catches this and routes to system browser; replaced with hidden iframe approach which stays inside the Electron window
-
-
 ## [6.38.630] — 2026-04-17
 
 ### Fix extension panel padding
 - `landing.html` — extension panel was outside the `<div class="dl-panels">` container (placed after the closing tag), so it got no padding; moved inside dl-panels alongside the other OS panels
-
-
 ## [6.38.629] — 2026-04-17
 
 ### Fix desktop app opening browser window
 - `desktop/main.js` — `setWindowOpenHandler` was returning `{ action: 'allow' }` for hexvault.co.uk URLs, allowing `window.open()` calls to create new Electron windows that Electron then couldn't host and fell back to the system browser; changed to always `{ action: 'deny' }` and route to `shell.openExternal` — no new Electron windows, period
-
-
 ## [6.38.628] — 2026-04-17
 
 ### Comprehensive mobile responsive fixes
 - `static/site-shared.css` — added global mobile safety net: `max-width:100%` on all media elements, `overflow-x:hidden` on html/body, mobile rules for download grid (1-col), FAQ category chips (wrap), blog grid, team/values grids, trust/security grids, changelog entries
 - `landing.html` — added mobile rules for download OS tabs (hide icons <600px, smaller padding), panel-left stacks vertically on mobile, buttons go full-width, alt links wrap
-
-
 ## [6.38.627] — 2026-04-17
 
 ### Fix extension panel layout
 - `landing.html` — removed extra `padding: 24px 32px` from `.dl-panel.active`; the `.dl-panels` wrapper already provides `padding: 32px` so the extension panel had double padding making it appear misaligned vs the other OS panels
-
-
 ## [6.38.626] — 2026-04-17
 
 ### Fix desktop app: browser opening + full screen
 - `desktop/main.js` — removed `mainWindow.maximize()` on startup; was forcing full screen on every launch
 - `desktop/main.js` — rewrote navigation guard from blacklist to whitelist; only `/app`, `/admin`, `/join`, `/verify`, `/reset-password`, `/share`, `/static` load inside the window — everything else opens in the system browser; previous blacklist used `startsWith('/')` which matched everything, causing logic errors
-
-
 ## [6.38.625] — 2026-04-17
 
 ### Fix nav/footer consistency + macOS badge overlap
 - All 24 site pages — added `/download` link to footer Product column
 - `static/site/download.html` — removed `position:absolute` from `.dl-cs-badge` (was overlapping macOS card text); replaced badge+note with inline coming-soon text
-
-
 ## [6.38.624] — 2026-04-17
 
 ### Fix globalShortcut crash dialog permanently
 - `desktop/main.js` — removed `globalShortcut` from top-level destructured import; Electron was throwing during module compilation before `process.on('uncaughtException')` could intercept it; now `require('electron').globalShortcut` is called lazily inside `registerShortcuts()` and `will-quit` only, where app is guaranteed ready
 - `desktop/build-installer.cmd` — added clean step that deletes `dist/win-unpacked`, `installer-app/app-files.zip`, and `dist-installer` before each build to prevent stale files being zipped
-
-
 ## [6.38.623] — 2026-04-17
 
 ### Fix extension panel spacing
 - `landing.html` — added `padding: 24px 32px` to `.dl-panel.active` so extension content isn't flush against the edge
-
-
 ## [6.38.622] — 2026-04-17
 
 ### Desktop app: start maximized
 - `desktop/main.js` — window starts maximized on Windows so the full login screen is visible without scrolling; increased default size to 1280x900 with min 1000x700
-
-
 ## [6.38.621] — 2026-04-17
 
 ### Fix installer UI + landing page + app crash
 - `landing.html` — removed `style="display:none"` from extension panel (inline style overrode .dl-panel.active CSS, making extension tab show blank); fixed macOS Coming Soon badge overlapping text (removed absolute positioning)
 - `desktop/installer-app/installer.html` — progress bar now full width (100%) with 40px padding
 - `desktop/main.js` — moved `registerShortcuts()` inside `browser-window-created` event with 500ms delay so globalShortcut is never called before app is truly ready
-
-
 ## [6.38.620] — 2026-04-17
 
 ### Fix landing OS tabs + download page layout
 - `static/landing.js` — fixed tab click selector `.dl-tabs` → `.dl-os-tabs`; tabs were never registering clicks so platform switching was broken
 - `landing.html` — Windows download shows ".exe · 191 MB" and correct installer description; macOS marked `data-live=false` so coming soon banner shows
 - `static/site/download.html` — Linux buttons get `white-space:nowrap` so AppImage/deb don't wrap; grid min-width bumped to 220px
-
-
 ## [6.38.619] — 2026-04-17
 
 ### Fix installer debug window + progress bar + app crash dialog
 - `desktop/installer-app/installer-main.js` — removed `openDevTools` call
 - `desktop/installer-app/installer.html` — progress bar container widened to 500px max-width
 - `desktop/main.js` — added `process.on('uncaughtException')` handler to suppress the error dialog popup; globalShortcut failure now logs silently to console instead of showing a blocking error box
-
-
 ## [6.38.618] — 2026-04-17
 
 ### Add SmartScreen explanation to download page
 - `static/site/download.html` — added collapsible "Windows SmartScreen warning?" info block under the Windows download button explaining the issue and how to click More info → Run anyway
-
-
 ## [6.38.617] — 2026-04-17
 
 ### Fix HexVault app crash on launch: globalShortcut error
 - `desktop/main.js` — wrapped `globalShortcut.register` in try/catch; Electron 36 throws if globalShortcut is unavailable in certain contexts (e.g. running from Program Files after fresh install); error is non-fatal so we catch and warn rather than crash
-
-
 ## [6.38.616] — 2026-04-17
 
 ### Fix installer progress bar size + launch behaviour
 - `desktop/installer-app/installer.html` — progress bar height 5px → 12px with glow effect; percentage label larger and purple; max-width expanded to 420px
 - `desktop/installer-app/installer-main.js` — removed `shell.openExternal` browser fallback from launch handler; now only launches `HexVault.exe` from install directory
-
-
 ## [6.38.615] — 2026-04-17
 
 ### Fix installer sizing and dragging
 - `desktop/installer-app/installer-main.js` — window size 720x500 → 820x580; made resizable
 - `desktop/installer-app/installer.html` — added 36px drag handle strip across top of window so user can drag it; increased right panel top padding to 48px to clear the drag handle
-
-
 ## [6.38.614] — 2026-04-17
 
 ### Fix installer freeze: async install
 - `desktop/installer-app/installer-main.js` — changed `ipcMain.handle` to `ipcMain.on`; install now runs fully async without blocking the IPC thread; progress events flow freely to renderer
 - `desktop/installer-app/installer.html` — changed `ipcRenderer.invoke` (blocking) to `ipcRenderer.send` (fire-and-forget); UI stays responsive during the 30-60 second extraction
-
-
 ## [6.38.613] — 2026-04-16
 
 ### Fix installer JS syntax error: remove orphaned code
 - `desktop/installer-app/installer.html` — removed 22 orphaned lines of the old `startInstall()` simulation body that were left floating after the function was rewritten; caused `Uncaught SyntaxError: Unexpected token '}'` which prevented all JS from running, making buttons do nothing
-
-
 ## [6.38.612] — 2026-04-16
 
 ### Fix installer blank screen: switch to nodeIntegration
 - Removed preload.js entirely; switched to `nodeIntegration: true` + `contextIsolation: false`; renderer uses `require('electron').ipcRenderer` directly — eliminates all preload path resolution issues that caused the window to crash before rendering
-
-
 ## [6.38.611] — 2026-04-16
-
-
 ## [6.38.610] — 2026-04-16
 
 ### Fix installer build: verification steps + path debugging
 - `desktop/build-installer.cmd` — added existence checks after each step so build fails loudly if zip or exe not produced; cleaner output showing exactly what to rename and upload
-
-
 ## [6.38.609] — 2026-04-16
 
 ### Custom installer: asar disabled, direct file paths
 - `desktop/installer-builder.json` — `asar: false` so all installer files sit as plain files at `resources/app/`; `__dirname` works normally with no asar unpacking complexity
 - `desktop/installer-app/installer-main.js` — all paths now use simple `__dirname`-relative references: `HTML_FILE`, `PRELOAD_FILE`, `APP_ZIP`, `ASSETS_DIR` all just work
-
-
 ## [6.38.608] — 2026-04-16
 
 ### Fix installer not opening: robust path resolution
 - `desktop/installer-app/installer-main.js` — rewrote path resolution to try multiple locations in order (app.asar.unpacked, direct resourcesPath, dev __dirname fallback); added existence checks before loadFile; added emergency error page if HTML not found; logs all resolved paths to console for debugging
-
-
 ## [6.38.607] — 2026-04-16
 
 ### Fix installer: remove NSIS wrapper, show custom UI immediately
 - `desktop/installer-builder.json` — switched from `nsis` back to `portable` target; the NSIS wrapper was showing a plain "Installing, please wait..." dialog before the custom UI appeared; portable runs the custom animated UI directly with no intermediate dialog
 - `desktop/installer-builder.json` — added `compression: store` so the portable exe launches instantly (no decompression delay); trade-off is larger file size but the user only runs the installer once
-
-
 ## [6.38.606] — 2026-04-16
 
 ### Fix custom installer build pipeline
 - `desktop/package.json` — removed `installer.nsh` include from NSIS config (it conflicts with electron-builder's own `assistedInstaller.nsh` defines); stripped sidebar/header image overrides (not needed since custom animated installer replaces NSIS UI entirely)
 - `desktop/build-installer.cmd` — step 1 now uses `electron-builder --dir` instead of `build:win` to produce `win-unpacked/` without running NSIS at all, skipping the conflict entirely; step 3 builds the animated installer which bundles the zipped app files
-
-
 ## [6.38.605] — 2026-04-16
 
 ### Fix NSIS build: MUI_FINISHPAGE_RUN already defined
 - `desktop/installer.nsh` — removed `MUI_FINISHPAGE_RUN`, `MUI_FINISHPAGE_RUN_TEXT`, `MUI_FINISHPAGE_TITLE`, `MUI_FINISHPAGE_TEXT`, `MUI_FINISHPAGE_LINK`, `MUI_FINISHPAGE_LINK_LOCATION` — all already defined by electron-builder's `assistedInstaller.nsh`; kept only `MUI_WELCOMEPAGE_TITLE`, `MUI_WELCOMEPAGE_TEXT`, `MUI_UNCONFIRMPAGE_TEXT_TOP`
-
-
 ## [6.38.604] — 2026-04-16
 
 ### Fix NSIS config key names
 - `desktop/package.json` — `installerSidebarImage` → `installerSidebar`, `installerHeaderImage` → `installerHeader` (correct electron-builder 26.x field names)
-
-
 ## [6.38.603] — 2026-04-16
 
 ### Custom animated installer: properly wired
@@ -8057,8 +7216,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `desktop/installer-app/preload.js` — added `install(opts)` invoke and `onProgress(cb)` IPC listener
 - `desktop/installer-builder.json` — switched from portable (slow, extracts on every run) to nsis target; added `asarUnpack` for preload and app-files.zip
 - `desktop/build-installer.cmd` — one-click build script: builds HexVault → zips win-unpacked → builds animated installer
-
-
 ## [6.38.602] — 2026-04-16
 
 ### Revert to NSIS installer: remove broken animated installer app
@@ -8066,28 +7223,20 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `desktop/package.json` — restored clean NSIS build config; `build:win` produces a real NSIS installer with custom sidebar/header graphics and branded welcome/finish pages
 - `desktop/installer.nsh` — removed invalid `MUI_BGCOLOR`/`MUI_TEXTCOLOR` defines
 - `desktop/package.json` — corrected NSIS image keys to `installerSidebarImage`/`installerHeaderImage`
-
-
 ## [6.38.601] — 2026-04-16
 
 ### Fix installer build: preload, icon, and asar path issues
 - `desktop/installer-app/installer-main.js` — icon and preload paths now use `process.resourcesPath` + `app.asar.unpacked/` when packaged, falling back to `__dirname` when running in dev; preload inside asar is not accessible to Electron's sandbox loader
 - `desktop/installer-builder.json` — added `asarUnpack` for `installer-app/preload.js`, `assets/icon.ico`, `assets/icon.png` so they exist on the real filesystem at runtime
 - `desktop/package.json` — added `--win` flag to `build:installer` script so electron-builder knows the target platform
-
-
 ## [6.38.600] — 2026-04-16
 
 ### Fix installer blank screen: wrong __dirname paths
 - `desktop/installer-app/installer-main.js` — `__dirname` inside the packaged asar resolves to the `installer-app/` folder (where `installer-main.js` lives), so all paths were double-prefixed with `installer-app/`; fixed: `loadFile` and `preload` now use `__dirname` directly, icon uses `path.join(__dirname, '..', 'assets', 'icon.ico')`
-
-
 ## [6.38.599] — 2026-04-16
 
 ### Fix installer-builder.json config errors
 - `desktop/installer-builder.json` — moved `main` into `extraMetadata` (not a top-level electron-builder field); fixed `portable.requestExecutionLevel` from `"requireAdministrator"` to `"admin"`
-
-
 ## [6.38.598] — 2026-04-16
 
 ### Animated custom installer UI
@@ -8096,8 +7245,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `desktop/installer-app/preload.js` — secure contextBridge IPC API exposed to installer renderer
 - `desktop/installer-builder.json` — electron-builder config for standalone installer build (`npm run build:installer`)
 - `desktop/package.json` — added `installer` and `build:installer` npm scripts
-
-
 ## [6.38.597] — 2026-04-16
 
 ### Custom branded Windows installer
@@ -8105,29 +7252,21 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `desktop/assets/installer-header.bmp` — 150×57px header banner with logo and purple accent line
 - `desktop/installer.nsh` — custom NSIS script: branded welcome text explaining zero-knowledge encryption, finish page with "Launch HexVault now" checkbox, uninstall message reassuring users their server-side vault data is unaffected
 - `desktop/package.json` — NSIS config updated to reference custom graphics and include installer.nsh
-
-
 ## [6.38.596] — 2026-04-16
 
 ### Fix desktop app nav + download card sizing
 - `desktop/main.js` — navigation guard now sends marketing pages (/, /security, /blog, /about etc.) to system browser instead of loading them inside the Electron window; previously clicking the logo navigated the app window to the landing page
 - `static/site/download.html` — desktop grid capped at 860px max-width; title updated to "Download the desktop app"; download button no longer stretches full card width
-
-
 ## [6.38.595] — 2026-04-16
 
 ### Windows download: .exe installer
 - `app.py` — Windows download now points to `HexVault-Setup-x64.exe` instead of portable zip
 - `static/site/download.html` — button updated to "Download .exe installer" with note about desktop/Start Menu shortcuts
 - To produce the .exe: run `npm install && npm run build:win` in the `desktop/` folder on a Windows machine, upload `dist/HexVault Setup 1.0.0.exe` to server as `static/releases/HexVault-Setup-x64.exe`
-
-
 ## [6.38.594] — 2026-04-16
 
 ### Compact desktop download cards
 - `static/site/download.html` — reduced card padding (28px→18px), icon size (48px→38px), name font (17px→14px), removed excess vertical spacing; cards no longer dominate the page
-
-
 ## [6.38.593] — 2026-04-16
 
 ### Desktop app: served directly from server, no GitHub needed
@@ -8137,8 +7276,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `app.py` — `HV_DESKTOP_DOWNLOADS` updated to serve from local `static/releases/` files
 - `static/site/download.html` — Windows card updated to explain portable zip; macOS marked coming soon
 - `build-desktop.sh` — new script to rebuild Linux desktop apps on the server (run `bash build-desktop.sh [version]` then restart container)
-
-
 ## [6.38.592] — 2026-04-16
 
 ### Desktop app download: proper one-click install buttons
@@ -8146,8 +7283,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `app.py` — updated `HV_DESKTOP_DOWNLOADS` to use GitHub Releases URLs as fallback (`/releases/latest/download/`); local `static/releases/` files take priority if present on server, otherwise redirects to GitHub
 - `.github/workflows/build-desktop.yml` — improved workflow: all 3 platforms build in parallel, creates a GitHub Release with all files attached, optional SCP deploy step to copy files directly to server's `static/releases/`
 - `app.py` — updated `download.html` CSP hash
-
-
 ## [6.38.591] — 2026-04-16
 
 ### Fix PWA install: opens vault (/app) not marketing site
@@ -8155,49 +7290,35 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `static/site/download.html` — same fix applied to download page install button
 - `static/pwa-install-banner.js` — added `?install=1` URL param handler; when `/app` loads with this param, it immediately calls `prompt()` once `beforeinstallprompt` fires (polls every 200ms, 8s timeout fallback to banner); URL is cleaned with `history.replaceState` so it doesn't appear in browser history
 - `app.py` — updated `download.html` CSP hash
-
-
 ## [6.38.590] — 2026-04-16
 
 ### Add manifest link to all public pages
 - 23 pages were missing `<link rel="manifest">` — Chrome DevTools showed "No manifest detected", and `beforeinstallprompt` cannot fire on pages without a manifest link; added `<link rel="manifest" href="/static/manifest.json">` and `<meta name="theme-color" content="#6355ff">` to all `static/site/` pages plus `faq.html`, `privacy-policy.html`, `security.html`, `status.html`, `terms.html`, `terms-of-service.html`, `updates.html`
 - Previously only `index.html` (/app) and `landing.html` (/) had the manifest link
-
-
 ## [6.38.589] — 2026-04-16
 
 ### Fix PWA install popup: restore e.preventDefault() in all handlers
 - `static/landing.js`, `static/site/download.html`, `static/pwa-install-banner.js` — restored `e.preventDefault()` in all three `beforeinstallprompt` handlers; removing it (6.38.587) stopped Chrome from capturing the event properly, meaning `_pwaPrompt` was set but Chrome had already shown and possibly auto-dismissed its own mini-infobar, and subsequent calls to `prompt()` would fail silently; with `preventDefault()` restored the event is captured and `prompt()` reliably shows the native install dialog when the user clicks Install
 - `app.py` — updated `download.html` CSP hash (changed again due to script modification)
 - Note: Chrome's console message `beforeinstallprompt.preventDefault() called. The page must call prompt()` is informational only — it appears when the user never clicks Install in a session; this is expected behaviour and does not affect functionality
-
-
 ## [6.38.588] — 2026-04-16
 
 ### Fix download page: buttons doing nothing (stale CSP hash)
 - `app.py` — updated CSP hash for `download.html` inline script; hash became stale when `e.preventDefault()` was removed from the `beforeinstallprompt` handler in 6.38.587; stale hash caused the entire inline script block to be CSP-blocked, silently killing `triggerPWAInstall()`, `showPwaSteps()`, and `handleNotify()`
-
-
 ## [6.38.587] — 2026-04-16
 
 ### Fix beforeinstallprompt warning: remove all remaining preventDefault calls
 - `static/landing.js` — removed `e.preventDefault()` from `beforeinstallprompt` handler (landing page download section PWA install button)
 - `static/site/download.html` — removed `e.preventDefault()` from inline `beforeinstallprompt` handler (download page PWA install button)
 - Previous fix (6.38.586) only addressed `pwa-install-banner.js`; the warning was also being generated by these two additional handlers which are loaded on `/` and `/download` respectively
-
-
 ## [6.38.586] — 2026-04-16
 
 ### Silence beforeinstallprompt console warning
 - `static/pwa-install-banner.js` — removed `e.preventDefault()` from `beforeinstallprompt` handler entirely; Chrome emits `beforeinstallprompt.preventDefault() called. The page must call beforeinstallprompt.prompt()` whenever `preventDefault()` is called but `prompt()` is never invoked in that session (happens for new users before login threshold, and returning users in cooldown window); fix: store the event without preventing default — Chrome shows its own mini-infobar as fallback on sessions where our banner doesn't trigger, and our `hvPWAInstall()` can still call `e.prompt()` correctly when the user clicks Install in our banner
-
-
 ## [6.38.585] — 2026-04-16
 
 ### Fix back-to-top button not appearing
 - All 23 site pages + `landing.html` — `<button id="backToTop">` was injected after the `<script src="site.js">` tag; `site.js` ran immediately, called `getElementById('backToTop')` before the element existed in the DOM, got `null`, early-returned, and attached no scroll listener; moved button to before the script tags in all pages
-
-
 ## [6.38.584] — 2026-04-16
 
 ### Fix vault UI: multiple script.js syntax errors breaking all JS
@@ -8206,15 +7327,11 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
   2. Peek-password popover — `innerHTML` with broken quote nesting (`'...getElementById('obImportBanner')...'`); rewrote with `createElement`/`addEventListener`
   3. Directory import modal (42 lines) — `innerHTML` with multiple `onclick=` and `onmouseover=` inside single-quoted strings; rewrote with DOM methods
   4. Directory user list — `users.map()` returning `innerHTML` strings with `onmouseover="this.style.background='rgba(...)'"` causing quote conflict; rewrote with `createElement`
-
-
 ## [6.38.583] — 2026-04-16
 
 ### Fix PWA install banner: CSP violation + beforeinstallprompt warning
 - `static/pwa-install-banner.js` — rewrote `showBanner()` from `innerHTML` template literal (which embedded `onclick="hvPWAInstall()"` and `onclick="hvPWADismiss()"` — both CSP-blocked) to `createElement` + `addEventListener`; Install and Dismiss buttons were silently doing nothing
 - `static/pwa-install-banner.js` — `beforeinstallprompt` handler now only calls `e.preventDefault()` when the user is not already installed/running as PWA; previously called unconditionally causing Chrome console warning: `beforeinstallprompt.preventDefault() called. The page must call beforeinstallprompt.prompt() to show the banner`
-
-
 ## [6.38.582] — 2026-04-16
 
 ### Back to top button: all site pages
@@ -8223,14 +7340,10 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `static/landing.js` — same back-to-top logic for landing page
 - `landing.html` — added `#backToTop` CSS inline and button HTML
 - 24 pages updated with `<button id="backToTop">` before `</body>`: all `static/site/` pages plus `faq.html`, `updates.html`, `terms.html`, `terms-of-service.html`, `privacy-policy.html`, `security.html`, `status.html`, `landing.html`
-
-
 ## [6.38.581] — 2026-04-16
 
 ### Fix landing page FAQ accordion
 - `landing.html` — FAQ CSS had `.faq-a.open{max-height:300px}` but the JS adds the `open` class to the parent `.faq-item`, not the answer div; changed to `.faq-item.open .faq-a{max-height:300px;padding-bottom:18px}` to match actual JS behaviour
-
-
 ## [6.38.580] — 2026-04-16
 
 ### Fix FAQ accordion (duplicate navDrawer breaking JS)
@@ -8239,8 +7352,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - All pages now have exactly one `<nav id="nav">` and one `id="navDrawer"`
 - `admin-login.html` — fixed `id="btnStep1" id="btnStep1"` and `id="btnStep2" id="btnStep2"` (literal duplicate `id=` attribute on same element, invalid HTML)
 - `index.html` — renamed second `id="familyMembersList"` (L3363, family settings section) to `id="familyMembersListSection"`; the first instance (L778, family vault tab panel) is the one referenced by `family-vault-handler.js`
-
-
 ## [6.38.579] — 2026-04-16
 
 ### Fix unstyled nav on site pages: create site-shared.css
@@ -8248,8 +7359,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - 23 site pages updated to `<link rel="stylesheet" href="/static/site-shared.css">` after Google Fonts — `faq.html`, `updates.html`, `terms.html`, `terms-of-service.html`, `privacy-policy.html`, `security.html`, `status.html`, all `static/site/*.html`
 - 5 pages missing hamburger JS also fixed: added `site.js` + `nav-drawer.js` script includes to `faq.html`, `static/site/download.html`, `status.html`, `terms.html`, `updates.html`
 - Root cause: nav CSS classes (`.nbrand`, `.nlinks` etc.) were only defined inside `landing.html`'s inline `<style>` block — all other pages had the HTML structure but no styling for it
-
-
 ## [6.38.578] — 2026-04-16
 
 ### JS errors fixed + nav/footer standardised across all pages
@@ -8258,8 +7367,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `app.py` — removed Chrome-only Permissions-Policy features (`browsing-topics`, `run-ad-auction`, `join-ad-interest-group`) that generated console warnings in Firefox/Safari
 - Nav + footer standardised across 23 pages: all `static/site/` HTML files plus `faq.html`, `updates.html`, `terms.html`, `terms-of-service.html`, `privacy-policy.html`, `security.html`, `status.html`; every page now has identical nav (with `navHamburger` + `navDrawer`), and full 4-column footer
 - All 11 inline script block CSP hashes verified valid after changes
-
-
 ## [6.38.577] — 2026-04-16
 
 ### Deep CSP + code quality audit: all issues resolved
@@ -8267,8 +7374,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `app.py` — removed duplicate `/robots.txt` GET handler (`robots_txt()`); canonical handler is `site_robots()` at L1939 which serves from `static/site/robots.txt`
 - `app.py` — removed duplicate `/sitemap.xml` GET handler (`sitemap_xml()`); canonical handler is `site_sitemap()` at L1939 which serves from `static/site/sitemap.xml`; Flask silently uses first-registered handler so these were dead code
 - Audit confirmed clean: 0 inline event handlers, 0 missing CSP hashes, 0 stale CSP hashes, 0 missing script src files, 0 duplicate same-method routes, single CSP authority (after_request)
-
-
 ## [6.38.576] — 2026-04-16
 
 ### CSP inline script hash audit: all pages fixed
@@ -8276,8 +7381,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `app.py` — updated stale hashes for `verify-email.html`, `updates.html`, `join.html` (blocks had changed but CSP wasn't updated)
 - `app.py` — removed conflicting duplicate CSP from `_site_page()` return tuple; `after_request` is now the sole CSP authority (previously `_site_page` set a weak `script-src 'self'` CSP that silently lost to `after_request` overwrite, causing confusion about which policy applied)
 - All 11 inline script blocks across all HTML files now have correct matching hashes in the global CSP
-
-
 ## [6.38.575] — 2026-04-16
 
 ### Full CSP inline-handler audit: all pages clean
@@ -8292,8 +7395,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `download.html` (root) — deleted stale orphan; route already serves from `static/site/download.html`
 - `static/sw.js` — added `index-event-wiring.js` to `SHELL_ASSETS` cache list
 - `app.py` — updated CSP `sha256` hashes for: all 3 landing.html inline script blocks, index.html inline script block, extension-preview.html inline script block
-
-
 ## [6.38.574] — 2026-04-16
 
 ### Fix download page CSP + service worker FetchEvent errors
@@ -8301,8 +7402,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `download.html` — SW registration scope changed from `/` to `/app` so SW does not intercept `/download` navigation requests
 - `sw.js` — `staleWhileRevalidate()` now returns a `503 Response` instead of `null` when both cache and network miss (fixes "Failed to convert value to 'Response'" FetchEvent TypeError)
 - `sw.js` — HTML navigation `.catch()` handler now returns a guaranteed `Response` fallback instead of potentially `undefined`
-
-
 ## [6.38.573] — 2026-04-15
 
 ### Android TWA app + assetlinks.json
@@ -8310,8 +7409,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `/.well-known/assetlinks.json` added to `static/.well-known/` with placeholder SHA-256 fingerprint
 - Flask route `serve_assetlinks` serves `assetlinks.json` with correct headers, auth-exempted
 - `hexvault-twa/README.md` — full step-by-step guide: keystore generation, SHA-256 fingerprint, signing config, AAB build, Play Store listing, and verification
-
-
 ## [6.38.572] — 2026-04-15
 
 ### Chrome extension badge, sitemap, manifest MIME type
@@ -8319,16 +7416,12 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `sitemap.xml` — added `/download` with priority 0.8 and today's lastmod
 - `app.py` — added `/static/manifest.json` route serving `application/manifest+json` MIME type (correct per spec, some browsers strict about it)
 - `serve_manifest` added to auth exemption list
-
-
 ## [6.38.571] — 2026-04-15
 
 ### Chrome extension live
 - Download page — Chrome Web Store button updated with real extension URL
 - Landing page — roadmap entry updated to reflect extension is live on Chrome, Firefox & Edge
 - Landing page — added Browser Extension tab and panel to the platforms/download section with Chrome, Firefox, and Edge links
-
-
 ## [6.38.570] — 2026-04-15
 
 ### PWA: offline page, banner cooldown, screenshots
@@ -8338,8 +7431,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `pwa-install-banner.js` — 30-day cooldown on dismiss (stores timestamp, resets after 30 days so users get a second chance)
 - `manifest.json` — added `screenshots` array with desktop (1280×800) and mobile (390×844) SVG screenshots for Chrome install dialog
 - Screenshots show real vault UI: credential rows, breach/expiry badges, security score ring, HexGuard status
-
-
 ## [6.38.569] — 2026-04-15
 
 ### PWA install banner
@@ -8348,8 +7439,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Never shown when already running as installed PWA, already dismissed, or already installed
 - Auto-hides after 30 seconds; dismiss persisted to localStorage
 - Hooked into `showVault()` in `script.js`
-
-
 ## [6.38.568] — 2026-04-15
 
 ### PWA improvements & cleanup
@@ -8360,27 +7449,19 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `landing.js` — fixed SW registration path from `/static/sw.js` to `/sw.js`
 - Download page — added PWA install section at top: install button (shown when `beforeinstallprompt` fires), manual how-to steps toggle, platform compatibility list (Windows/Linux/macOS/Android/iOS)
 - Download page — added `triggerPWAInstall()`, `showPwaSteps()`, and SW registration to script block
-
-
 ## [6.38.567] — 2026-04-15
 
 ### Fix download page 404 (properly)
 - `download.html` moved into `static/site/` — all public marketing pages live there, not root
 - Download route updated to use `_site_page('download.html')` instead of `_serve_html()`
-
-
 ## [6.38.566] — 2026-04-15
 
 ### Fix download page 404
 - Added `download_app` to auth exemption list — middleware was intercepting the route before it could fire
-
-
 ## [6.38.565] — 2026-04-15
 
 ### Download link in nav
 - Added Download to desktop nav and mobile drawer in `landing.html`
-
-
 ## [6.38.564] — 2026-04-15
 
 ### Backend wiring for download page
@@ -8388,8 +7469,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - `/api/notify-desktop` endpoint — rate limited 10/hr, inserts email into `desktop_notify` table, exempt from auth middleware
 - `desktop_notify` table created on startup (`id`, `email UNIQUE`, `created_at`, `notified`)
 - `notify_desktop` added to CSRF/auth exemption list
-
-
 ## [6.38.563] — 2026-04-15
 
 ### Download page
@@ -8397,8 +7476,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Desktop app cards for Windows and Linux shown as coming soon placeholders
 - Notify-me email form POSTs to `/api/notify-desktop`
 - Matches existing site design — dark theme, nav, footer, mobile responsive
-
-
 ## [6.38.562] — 
 
 ### rebuild-desktop.sh added
@@ -8407,8 +7484,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Auto-updates HV_DESKTOP_DOWNLOADS defaults in app.py with new filenames after each build
 - Flags: --linux, --win, --mac, --all (default: linux + win only, mac requires macOS host)
 - Handles icon generation from favicon.svg, npm install, electron-builder invocation, and portable zip packaging as fallback when NSIS unavailable
-
-
 ## [6.38.561] — 2026-04-15
 
 ### Desktop app: all four platforms now live
@@ -8418,8 +7493,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Windows and macOS download buttons on landing page now active (data-live=true)
 - Download button labels updated to reflect portable zip format and file sizes
 - dl-alt-note CSS added for usage hint text below download buttons
-
-
 ## [6.38.560] — 2026-04-15
 
 ### Desktop app: Linux installers built and live
@@ -8429,8 +7502,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - app.py download route updated: serves local files from /static/releases/ if present, falls back to env var CDN URL, falls back to /#platforms
 - Windows (.exe) and macOS (.dmg) still marked Coming Soon — require building on Windows/macOS CI (use GitHub Actions workflow in .github/workflows/build-desktop.yml)
 - To add Windows/macOS: build on respective CI, place in static/releases/, set DL_WINDOWS and DL_MAC env vars or filenames will be picked up automatically
-
-
 ## [6.38.559] — 2026-04-15
 
 ### Site: Download page
@@ -8443,8 +7514,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 ### CI
 - Added .github/workflows/build-desktop.yml — GitHub Actions workflow builds all three platforms in parallel (windows-latest, macos-latest, ubuntu-latest) and creates a GitHub Release with all installers on tag push
 - Trigger: push a tag like 'desktop-v1.0.0' or run manually via workflow_dispatch
-
-
 ## [6.38.558] — 2026-04-15
 
 ### Desktop app
@@ -8461,8 +7530,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Windows/Mac/Linux cards show 'Download .exe/.dmg/AppImage' buttons (marked Coming Soon until builds are hosted)
 - /download?platform=windows|mac|linux route — when DOWNLOAD_URLS dict is populated with CDN URLs, buttons will trigger direct downloads
 - Mobile card combines iOS + Android with a single 'How to install' modal
-
-
 ## [6.38.557] — 2026-04-15
 
 ### Features
@@ -8476,14 +7543,10 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
   - Service worker registration added to landing.js
   - Trust strip below cards: zero-knowledge, no app store required, AES-256-GCM
 - Added /download, /get-app, /install routes to app.py — all redirect to /#platforms
-
-
 ## [6.38.556] — 2026-04-15
 
 ### Website
 - Added Roadmap to desktop nav (after Pricing, before Security) and mobile drawer
-
-
 ## [6.38.555] — 2026-04-15
 
 ### Site: Hero card responsive fixes
@@ -8496,8 +7559,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Removed duplicate smb-h1 definition (clamp(44px,7vw,88px) was overriding the hero CSS clamp(56px,8.5vw,104px))
 - Badge positions tightened on small screens (bottom:-8px/top:-8px instead of ±16px) so they don't cause horizontal scroll
 - Mobile hero layout: headline, subtext, form all centred at ≤860px
-
-
 ## [6.38.554] — 2026-04-15
 
 ### Site: CSS repair and pricing fix
@@ -8508,14 +7569,10 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - .hgrad (hero gradient span) fixed: the h-sub-headline typography (font-size, font-family, margin) was incorrectly applied to the span; replaced with gradient-clip-only rule so it correctly inherits font from the parent h1
 - .h-sub-headline CSS class references (which never existed in the HTML) remapped to .hgrad throughout
 - .h-eyeline .accent remapped to .smb-h1 .accent
-
-
 ## [6.38.553] — 2026-04-15
 
 ### Website
 - Removed typewriter animation from hero section — headline now stays static
-
-
 ## [6.38.552] — 2026-04-15
 
 ### Website
@@ -8523,8 +7580,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Pricing: removed all intermediate 2-column breakpoints — grid stays repeat(3,minmax(0,1fr)) from desktop down to 640px, then drops to single column
 - Pricing: section padding overridden with !important to defeat the generic section rule (clamp(12px,2vw,32px) each side), inner max-width widened to 1400px
 - Pricing: gap tightened to 16px for better fit at mid-range viewports
-
-
 ## [6.38.551] — 2026-04-15
 
 ### Website
@@ -8532,8 +7587,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Pricing: removed intermediate 2-column breakpoint entirely — stays 3-column down to 640px, then drops to 1-column
 - Pricing: #pricing section horizontal padding reduced to clamp(12px,3vw,40px) to give cards more room at mid viewports
 - Pricing: #pricing .inner max-width widened to 1320px so cards are not constrained on wider screens
-
-
 ## [6.38.550] — 2026-04-15
 
 ### Site: Hero redesign
@@ -8546,8 +7599,6 @@ The last remaining PBKDF2 codepath is now Argon2id. HexVault is end-to-end Argon
 - Footer stat dividers added between columns for structure
 - Floating badges get glassy backdrop-filter treatment
 - All animation targets updated for new CSS structure
-
-
 ## [6.38.549] — 2026-04-15
 
 ### Site: Hero animations
@@ -8576,8 +7627,6 @@ Particles (landing.js):
 - Shimmer alpha: each particle has individual phase offset for organic brightness variation
 - Connection boost: lines near the cursor brighten with a proximity-based opacity boost
 - Count scales with viewport: particle count capped at 80, floor from screen area
-
-
 ## [6.38.548] — 2026-04-15
 
 ### Website
@@ -8589,16 +7638,12 @@ Particles (landing.js):
 - Pricing: section gets radial glow behind header, richer background gradient
 - Pricing: ph-note CSS selector was broken (.ph .ph .ph-note instead of .ph-note) — fixed
 - Pricing: popular card glow upgraded, card hover states more premium
-
-
 ## [6.38.547] — 2026-04-15
 
 ### Security
 - Added 4 missing rate limits in features.py: /api/admin/gdpr-requests PUT (20/min), /api/admin/geo-blocking PUT (20/min), /api/org/groups DELETE (20/min), /api/org/groups/members DELETE (30/min), /api/secure-send/revoke POST (10/min)
 - Session fixation protection confirmed on both login paths — session.clear() always precedes session['user_id'] assignment
 - Full audit complete: all admin routes authenticated, all mutation routes rate-limited across app.py and features.py, zero str(e) information leaks, no SQL injection vectors, no XSS vectors
-
-
 ## [6.38.546] — 2026-04-15
 
 ### Security
@@ -8608,8 +7653,6 @@ Particles (landing.js):
 
 ### Bug fixes
 - loadAccount now calls load2FAStatus() on navigation to My Account section — 2FA badge was showing stale state from previous loads.
-
-
 ## [6.38.545] — 2026-04-15
 
 ### Security
@@ -8620,22 +7663,16 @@ Particles (landing.js):
 ### Bug fixes
 - Fixed 6x showToast() calls in adminLockMemberVault and adminUnlockMemberVault — showToast does not exist in admin-panel.js, correct function is toast(). Lock/unlock vault operations were silently failing to show feedback.
 - Fixed openMemberDrawer() using await without async keyword — member drawer async operations were silently not completing
-
-
 ## [6.38.544] — 2026-04-15
 
 ### Bug fixes
 - Fixed admin 2FA setup not working: three bugs — (1) twofa-qr was a div not an img so .src assignment silently failed, (2) twofa-step-start was display:none by default and contained twofa-step-scan as a child, hiding the parent hid the scan step too, (3) admin2FAVerify and admin2FADisable called showToast which does not exist in admin-panel.js (correct fn is toast). Restructured HTML into two flat sibling divs, fixed img tag, fixed all toast calls, added auto-submit on 6 digits.
-
-
 ## [6.38.543] — 2026-04-15
 
 ### Security / Bug fixes
 - Fixed logout-on-refresh not firing: moved reload detection to the very top of admin-panel.js as a synchronous IIFE, before _adminCsrf or init(). Uses synchronous XHR to POST /api/admin/logout then window.location.replace('/admin/login') immediately. Previous implementation called _setupRefreshLogout() inside init() which ran after all async fetches completed — too late.
 - Fixed CSRF token invalid errors: added empty-token guard — if _adminCsrf is empty after page load (meta tag injection missed due to cache/race), automatically reloads once to get fresh token; if still empty after reload, redirects to login. Prevents silent 403s on all API calls.
 - _setupRefreshLogout() now only strips ?fresh=1 from URL — all security logic moved to top-level IIFE.
-
-
 ## [6.38.542] — 2026-04-15
 
 ### Bug fixes
@@ -8643,14 +7680,10 @@ Particles (landing.js):
 - Fixed POST /api/admin/org 400: logo URL validation regex rejected percent-encoded URLs (e.g. via.placeholder.com/...%20?Text=...) — loosened regex and changed from reject to silent-skip so other fields still save
 - Fixed approvals badge showing stale count: badge now uses visibleActions (post client-side filter) not the raw server count — expired and fully-approved actions no longer inflate the badge
 - Deduplicated filter logic in loadApprovals: render now uses the same visibleActions array computed for the badge rather than a second identical filter pass
-
-
 ## [6.38.541] — 2026-04-15
 
 ### Security
 - Restored logout-on-refresh for admin portal: uses Navigation Timing API (performance.getEntriesByType('navigation')[0].type === 'reload') to detect F5/Ctrl+R, POSTs to /api/admin/logout and redirects to login. Post-login load (?fresh=1) is exempted. No loop risk — redirect to /admin/login is type 'navigate' not 'reload'.
-
-
 ## [6.38.540] — 2026-04-15
 
 ### Bug fixes
@@ -8658,56 +7691,40 @@ Particles (landing.js):
 - Fixed sidebar showing '%s' as org name — guards against literal format string placeholders from DB, shows 'Organisation' instead
 - Fixed canary report spinner stuck — canaryReportBody/canaryReportList ID mismatch meant JS wrote to a non-existent element
 - Added 90s buffer to approval expiry check — timestamp truncation to minutes caused 'expires Just now' actions to show as valid for up to 59s after actual expiry
-
-
 ## [6.38.539] — 2026-04-15
 
 ### Features & bug fixes
 - Fixed 1/1 approval still showing Approve/Reject: client now filters out actions where current_approvals >= required_approvals, preventing interaction with already-complete actions
 - Added PDF preview modal: clicking PDF exports opens a full in-page preview with the styled report before printing, with Print/Save PDF button. No pop-up blocker issues.
 - Rebuilt PDF report design: HexVault branding, score ring SVG, colour-coded stat strip, key findings panel with severity indicators, striped member table with score bars, confidential footer
-
-
 ## [6.38.538] — 2026-04-15
 
 ### Bug fixes
 - Fixed 409 Already voted: GET approvals now returns has_voted flag per action (checks pending_action_votes by voter_key prefix). Approve/Reject buttons replaced with 'Already voted — awaiting other admins' badge when current admin has voted.
 - Fixed PDF exports failing: complianceExport was fetching a JSON endpoint and calling r.blob() on the response. PDF types now open a styled print window with the report data — browser Save as PDF works natively. CSV types fall back to building CSV client-side if endpoint returns JSON.
 - Fixed downloadSecurityReport and complianceExport not being async — both used await without async keyword, causing silent failures.
-
-
 ## [6.38.537] — 2026-04-15
 
 ### Bug fixes
 - Removed all emoji from admin-panel.js: replaced risk factor icons (lock, warning, shield, recycle, person, tick) and breached password indicator with inline SVG paths
-
-
 ## [6.38.536] — 2026-04-15
 
 ### Bug fixes
 - Fixed approval items not disappearing after voting: optimistic DOM removal on click (fade + collapse animation), buttons disabled immediately to prevent double votes, expired actions filtered out entirely from render (no longer shown even as disabled), 409 handled gracefully with refresh
 - Note: the %s org name shown in sidebar is the actual org name stored in the database — rename it in Organisation settings
-
-
 ## [6.38.535] — 2026-04-15
 
 ### Features
 - Rebuilt activity heatmap: stat strip (total logins, peak hour, busiest day, off-hours %), interactive hover tooltip with login count and peak percentage bar, click day labels or hour bars to highlight entire rows/columns, row and column summary mini-bars, 90d/30d/7d range toggle, behavioural insights panel with no-emoji severity colouring, animated entry. Backend updated to accept days query param.
-
-
 ## [6.38.534] — 2026-04-15
 
 ### Bug fixes
 - Fixed members table spinner persisting after data loads: DOM-diff render only touched tr[data-open-member] rows so the loading spinner row was never removed. filterAndRenderMembers() now removes non-data rows before rendering.
 - Fixed sparklines loading twice per members fetch: a redundant loadMembers wrapper was calling loadMemberSparklines() after the internal call already did the same. Removed the outer wrapper.
-
-
 ## [6.38.533] — 2026-04-15
 
 ### Bug fixes
 - Fixed MPA 409 Conflict errors: expired pending actions were still showing Approve/Reject buttons in the UI. Actions whose expires_at has passed now show an 'Expired — cannot vote' badge instead, preventing votes being submitted against already-expired actions
-
-
 ## [6.38.532] — 2026-04-15
 
 ### Bug fixes
@@ -8715,21 +7732,15 @@ Particles (landing.js):
 - Fixed loadOrgSettings() called twice on every nav to organisation — duplicate if block removed
 - Fixed /api/vault-integrity 401 — admin portal has no user session, replaced with informational toast directing to main portal
 - Removed dead unreachable code left after vault-integrity early return
-
-
 ## [6.38.531] — 2026-04-15
 
 ### Bug fixes
 - Fixed ReferenceError: session is not defined in vault integrity check — session is a Flask server-side object, replaced with _adminCsrf directly
 - Full static audit of admin-panel.js: verified no other Flask server-side leaks, no broken HTML string patterns, no genuine await-in-non-async issues
-
-
 ## [6.38.530] — 2026-04-15
 
 ### Bug fixes
 - Fixed SyntaxError on line 856: toggle-admin icon button title attribute prematurely closed the JS string, leaving data-action as a bare identifier. Merged into single continuous string.
-
-
 ## [6.38.529] — 2026-04-15
 
 ### UI polish & bug fixes
@@ -8739,89 +7750,61 @@ Particles (landing.js):
 - Added .row-acts and .act-btn CSS
 - Fixed members table spinner and error row colspan from 7 to 9 (table has 9 columns)
 - Fixed duplicate button line in member drawer HTML (openMemberDrawer rendered Grant Admin Role twice)
-
-
 ## [6.38.528] — 2026-04-15
 
 ### Security & bug fixes
 - Fixed admin directory import OAuth flow: added dedicated /api/admin/directory/callback route (redirects to /admin not /app), /api/admin/directory/invite-all admin wrapper, and corrected callback state validation which was rejecting all admin-initiated flows due to user_id being None
-
-
 ## [6.38.527] — 2026-04-15
 
 ### Bug fixes
 - Fixed 404 on /api/admin/directory/auth when org has no members: rewrote route to build OAuth URL directly using request.admin_org_id rather than proxying through a user session
 - Fixed 404 on /api/admin/compliance-report when org has no members: added direct org tier check fallback when no members exist yet
-
-
 ## [6.38.526] — 2026-04-15
 
 ### Bug fixes
 - Fixed column "is_org_admin" does not exist in admin proxy routes — replaced with JOIN on org_members.is_admin
-
-
 ## [6.38.525] — 2026-04-15
 
 ### Bug fixes
 - Fixed column "is_org_admin" does not exist error in admin proxy routes — users table has no such column, admin role is on org_members.is_admin. Updated queries to JOIN org_members for admin lookup with fallback to any org member.
-
-
 ## [6.38.524] — 2026-04-15
 
 ### Bug fixes
 - Fixed 401 errors on /api/org/directory/auth and /api/org/compliance-report: admin panel was calling user-session endpoints. Added admin wrapper routes /api/admin/directory/auth and /api/admin/compliance-report that resolve the org's user_id via the admin's org_id and proxy through to the existing functions.
-
-
 ## [6.38.523] — 2026-04-15
 
 ### Bug fixes
 - Fixed ReferenceError: btn is not defined in risk modal event listener — var btn declaration was dropped when converting the callback to async
-
-
 ## [6.38.522] — 2026-04-14
 
 ### Bug fixes
 - Fixed SyntaxError in bulkDeactivate: regex replacement left double tail on confirm string — original string content appended after closing parens causing unexpected identifier
-
-
 ## [6.38.521] — 2026-04-14
 
 ### Bug fixes
 - Fixed SyntaxError: await hv_confirm called from three non-async event listener callbacks — made all three async (main click delegation listener, risk/stale listener, stale deactivate button)
 - Fixed stray syntax artifact in stale deactivate confirm from regex replacement
-
-
 ## [6.38.520] — 2026-04-14
 
 ### Improvements
 - Replaced all browser-native confirm() and alert() dialogs (13 instances) with custom styled modals matching the dashboard design — danger actions show red, warnings show amber, info shows purple, all support Enter/Escape keyboard shortcuts
 - Eliminated member table flicker on background polls: filterAndRenderMembers now DOM-diffs existing rows instead of replacing tb.innerHTML — only changed rows are touched, open drawers and scroll position are preserved
-
-
 ## [6.38.519] — 2026-04-14
 
 ### Bug fixes
 - Fixed 401 errors on admin dashboard: loadOnboardingChecklist was calling /api/org/webhook and /api/org/members (user-session endpoints) instead of /api/admin/org and /api/admin/members (admin-session endpoints)
-
-
 ## [6.38.518] — 2026-04-14
 
 ### Bug fixes
 - Fixed admin dashboard constantly reloading: _setupRefreshLogout() was logging out on every page load that lacked ?fresh=1, creating a login/redirect/logout loop. Removed logout-on-refresh; server-side 15-min inactivity timeout provides the real security boundary.
-
-
 ## [6.38.517] — 2026-04-14
 
 ### Bug fixes
 - Fixed CHANGELOG entries not appearing on updates page: prepend script used '## vX.X.X' format but parser regex expects '## [X.X.X]' — corrected all recent entries and fixed template for future packaging
-
-
 ## [6.38.516] — 2026-04-14
 
 ### Bug fixes
 - Fixed SyntaxError in admin-panel.js line 2839: unescaped apostrophe in 'can't' inside single-quoted string broke JS parsing, causing init is not defined
-
-
 ## [6.38.515] — 2026-04-14
 
 ### Bug fixes
@@ -8832,16 +7815,12 @@ Particles (landing.js):
 
 All notable changes to HexVault are documented here.
 Format: `[VERSION] — YYYY-MM-DD — Summary`
-
-
 ## [6.38.514] — 2026-04-14 — Fix: CSRF exemption for extension endpoints
 
 ### app.py
 - Added `ext_phishing_check` and `hibp_realtime_check` to the CSRF exempt list in `check_csrf()`.
 - The browser extension background service worker calls these endpoints with a valid session cookie but cannot inject a CSRF token (the token lives in the popup session, not the service worker). Both endpoints are already protected by `@require_auth` (session-based) and `@limiter.limit`, so CSRF exemption is safe.
 - Fixes 403 CSRF violation errors logged when the extension calls `/api/ext/phishing-check` after login.
-
-
 ## [6.38.513] — 2026-04-14 — Extension: TOTP states, breach notification, landing page updates
 
 ### extension-preview.html
@@ -8853,8 +7832,6 @@ Format: `[VERSION] — YYYY-MM-DD — Summary`
 ### landing.html
 - Compare table: added "Browser extension" row. Shows competitors as "None" or "Autofill only — no phishing detection" vs HexVault "Autofill + active phishing detection". Table now has 8 rows.
 - Platforms section: added "See interactive demo →" link on the Browser Extension card, pointing to /extension-preview. Lets visitors try the extension before installing.
-
-
 ## [6.38.512] — 2026-04-14 — Browser extension phishing detection
 
 ### Feature: Real-time phishing detection (app.py + extension-preview.html)
@@ -8876,8 +7853,6 @@ The first password manager extension with active phishing detection — not just
 - State 09: In-page content script injection — shows how HexVault injects a red banner at the top of a suspected phishing page ("HexVault: This site looks like paypal.com — do not enter your password"), with the extension icon badge pulsing red in the browser toolbar.
 - State 06 updated: added pulsing red "!" phishing alert badge variant to the badge states reference.
 - New CSS: .phish-banner (danger/warn variants), .phish-icon, .phish-title, .phish-detail, .phish-actions, .phish-btn variants, .reuse-warn, .hv-phish-banner (in-page), pulse-red animation for the badge.
-
-
 ## [6.38.511] — 2026-04-14 — UX improvements: peek, favicon, strength meter, generator hint, keyboard shortcuts
 
 ### Feature 1: Inline password peek
@@ -8914,8 +7889,6 @@ The first password manager extension with active phishing detection — not just
 - peekIn animation for the peek popover.
 - kbd tag styles for shortcut hints.
 - .pm-strength-fill transition: width .25s ease, background .25s ease.
-
-
 ## [6.38.510] — 2026-04-14 — IP allowlist: fully wired, admin portal enforcement, my-IP helper
 
 ### app.py
@@ -8934,8 +7907,6 @@ The first password manager extension with active phishing detection — not just
 
 ### admin.html
 - Added "Your current IP" row between the textarea and save button, showing the admin's live IP with "Add my IP" button.
-
-
 ## [6.38.509] — 2026-04-14 — Security hardening: vault lockdown, HIBP proxy, enum fix, export controls
 
 ### Account enumeration hardening (app.py)
@@ -8967,8 +7938,6 @@ The first password manager extension with active phishing detection — not just
 - Added POST /api/passwords/hibp-check: accepts 5-char SHA1 prefix, queries HIBP k-anonymity API server-side, returns hash list to client.
 - Upgraded checkPasswordBreach() to use the server proxy instead of a direct browser→HIBP call. More reliable (avoids CSP/CORS issues), same zero-knowledge guarantee (only 5-char prefix leaves the device, full hash never sent to server).
 - Existing savePassword() HIBP integration, breach warning modal, and showBreachWarning() flow all continue to work unchanged.
-
-
 ## [6.38.508] — 2026-04-14 — Directory import, health email, score card, extension
 
 ### Feature 1: Google Workspace & Microsoft 365 directory import
@@ -9003,8 +7972,6 @@ The first password manager extension with active phishing detection — not just
 - manifest.json: improved description targeting "password manager for teams" keywords, added categories (productivity, utilities, security), lang (en-GB), PWA shortcuts (Open Vault, Security Dashboard)
 - extension-preview.html: added meta description, OG tags, canonical link, updated title with keyword-rich text
 - extension-preview added to sitemap.xml at priority 0.7
-
-
 ## [6.38.506] — 2026-04-14 — Email redesign, trial nurture, import wiring
 
 ### email_service.py: complete redesign
@@ -9029,8 +7996,6 @@ The first password manager extension with active phishing detection — not just
 - After successful import: if onboarding overlay is open, advances to the health scan step (3-solo) automatically.
 - If not in onboarding: shows a 12-second dismissible banner with "Run health check" CTA.
 - _obShowImportHealthBanner() and _obRunQuickHealthCheck() helper functions added.
-
-
 ## [6.38.505] — 2026-04-14 — Onboarding overhaul (user + admin)
 
 ### User onboarding (index.html + script.js + style.css)
@@ -9054,8 +8019,6 @@ The first password manager extension with active phishing detection — not just
 - Added progress bar and "N of 6 steps complete" counter inside the checklist card.
 - All data fetched in parallel with Promise.all rather than sequential awaits.
 - Checklist items use ob-checklist-item CSS class with consistent icon/arrow styling.
-
-
 ## [6.38.504] — 2026-04-14 — Logo consistency across all pages
 
 ### Fixed
@@ -9066,8 +8029,6 @@ The first password manager extension with active phishing detection — not just
 - Footer logos on landing.html updated to match (no box wrapper, correct wordmark).
 - All nav logos now: 26x26 SVG, "HexVault" wordmark, no wrapper box, correct href.
 - Footer logos remain 22x22 (slightly smaller than nav is standard practice, same design).
-
-
 ## [6.38.503] — 2026-04-14 — Mobile responsiveness & SEO overhaul
 
 ### Fixed (mobile)
@@ -9084,8 +8045,6 @@ The first password manager extension with active phishing detection — not just
 - Sitemap rebuilt: removed dead URLs (/updates, /trust), added /faq and /blog, correct lastmod dates, proper changefreq and priority values.
 - robots.txt fixed: removed /static/ block that was preventing crawlers from accessing CSS/JS/images needed for rendering.
 - About, Security, FAQ, Blog pages: titles and descriptions updated to be more specific and keyword-targeted.
-
-
 ## [6.38.502] — 2026-04-14 — Pricing, card heights, hero badge fixes
 
 ### Fixed
@@ -9093,42 +8052,30 @@ The first password manager extension with active phishing detection — not just
 - Pricing cards now equal height: added align-items:stretch to .pg grid so all cards stretch to the tallest in the row.
 - Who it's for cards now equal height: changed .smb-for-grid from align-items:start to align-items:stretch.
 - "HexGuard resolved 3 issues" badge no longer clipped: changed .hright overflow from hidden to visible.
-
-
 ## [6.38.501] — 2026-04-14 — Pricing grid alignment fix
 
 ### Fixed
 - Pricing grid was using grid-template-columns:repeat(5,1fr) but only has 4 cards (Personal, Pro, Family, Team), leaving a blank 5th column that pushed cards off-centre to the right.
 - Changed to repeat(4,1fr) so the 4 cards fill the grid correctly and sit centred.
-
-
 ## [6.38.499] — 2026-04-14 — Landing page structural fix
 
 ### Fixed
 - Removed duplicate nested #ent, #roadmap, #platforms, and #pricing sections (29,662 chars) that were malformed inside the .pg pricing grid, causing character-by-character text wrapping throughout those sections.
 - Fixed #cs (early access) and #faq-landing sections nested inside the .pg grid div — inserted proper closing tags before #cs to restore correct DOM structure.
 - Fixed hero h1 class conflict: .hero-h1 was already defined in original CSS as a 13px uppercase label. Renamed new hero heading to .smb-h1 with correct display sizing (clamp 32px–58px).
-
-
 ## [6.38.498] — 2026-04-14 — Landing page SMB rebuild (CSS namespace fix)
 
 ### Improved
 - Rebuilt all new landing page sections using exclusively smb- prefixed CSS classes (verified against all 305 existing class names) to eliminate conflicts with the original stylesheet.
 - Previous attempt had used .trust-item which already existed in the original as a card-style element, causing layout corruption.
-
-
 ## [6.38.497] — 2026-04-14 — Landing page SMB sections
 
 ### Improved
 - Rebuilt new SMB landing sections from clean backup. Updated mobile nav drawer links to new anchors (#for, #pain, #hexguard-ai).
-
-
 ## [6.38.496] — 2026-04-14 — Landing page original sections restored
 
 ### Fixed
 - Restored all original sections accidentally removed in previous attempt: #how, #demo, #why, #features, #roadmap, #platforms, #cs, #faq-landing.
-
-
 ## [6.38.495] — 2026-04-14 — Landing page SMB/personal targeting
 
 ### Added
@@ -9139,14 +8086,10 @@ The first password manager extension with active phishing detection — not just
 - HexGuard AI section (#hexguard-ai): two-column layout with feature list and live chat demo mockup.
 - Updated comparison table (#compare): HexVault vs 1Password vs Bitwarden across 9 capabilities.
 - Updated nav and mobile drawer links to new sections.
-
-
 ## [6.38.494] — 2026-04-14 — Blog post nav logo fix
 
 ### Fixed
 - Both blog post pages had nav logo href="/" sending users to the landing page instead of /blog. Changed to href="/blog" on both posts.
-
-
 ## [6.38.493] — 2026-04-14 — HexGuard Intelligence Layer
 
 ### Added
@@ -9155,15 +8098,11 @@ The first password manager extension with active phishing detection — not just
 - Vault context endpoint (GET /api/hexguard/context): live vault snapshot injected into every HexGuard chat system prompt.
 - hexguard.js rewritten (555 lines): tab system, briefing panel, context injection, explain handler.
 - Admin panel Explain button wired to hexguardExplainAdminAlert() in admin-panel.js.
-
-
 ## [6.38.492] — 2026-04-14 — Blog post: Offboarding done right
 
 ### Added
 - New blog post at /blog/offboarding-done-right: "Offboarding done right: a technical checklist."
 - Route added to app.py. blog.html updated with post 2 live. Sitemap updated.
-
-
 ## [6.38.491] — 2026-04-13 — SCIM 2.0 Provisioning
 
 ### Feature 5: SCIM 2.0 Provider
@@ -9206,8 +8145,6 @@ Full SCIM 2.0 server implementation registered at /scim/v2/
 - PATCH active=false → deactivates org_members row (preserves account, removes access)
 - DELETE → same as PATCH active=false (SCIM semantics: deprovision not delete)
 - All operations fire security log events and in-app notifications
-
-
 ## [6.38.490] — 2026-04-13 — IAM Features: Webhooks, JIT Access, Rotation Enforcement, Service Accounts
 
 ### Feature 1: Org Webhook Events
@@ -9247,14 +8184,10 @@ Named non-human identities for CI/CD pipelines and scripts with scoped API token
 - GET /api/v1/vault — machine-readable vault API, authenticated via Authorization: Bearer hvsa_...
   Returns encrypted credential blobs scoped to token's folders
 - Schema: service_accounts + service_account_tokens tables
-
-
 ## [6.38.489] — 2026-04-13 — Add reportlab to requirements.txt
 
 ### Bug fix
 - Added reportlab==4.2.5 to requirements.txt. The compliance PDF route (/api/org/compliance-report) was already built but would return a 500 error on a fresh container build because reportlab wasn't in the dependency list. Now included so it installs automatically on deploy.
-
-
 ## [6.38.488] — 2026-04-13 — Compliance Export: wire full SOC2/ISO27001 PDF report
 
 ### New feature
@@ -9262,8 +8195,6 @@ Named non-human identities for CI/CD pipelines and scripts with scoped API token
 - Added "Full Compliance Report" card to the Compliance Export section of the admin portal with a "Download Compliance PDF" button.
 - Button handles: generating spinner state, 403 upgrade prompt (Team/Enterprise required), server errors, and success download with auto-filename from Content-Disposition header.
 - Card styled with indigo accent border to distinguish it as the primary export action.
-
-
 ## [6.38.487] — 2026-04-13 — Fix vault integrity monitor (was silently doing nothing)
 
 ### Bug fixes
@@ -9278,8 +8209,6 @@ Named non-human identities for CI/CD pipelines and scripts with scoped API token
 - Fix: _running guard prevents double-execution if button is clicked twice.
 - Fix: loadSaved() now delayed 1.5s after page load to let the session establish before fetching status.
 - Raised rate limits: /api/vault-integrity 5/hr → 20/hr, /api/vault-integrity/save 12/hr → 20/hr.
-
-
 ## [6.38.486] — 2026-04-13 — Vault Integrity Monitor
 
 ### New feature: Vault Integrity Monitor
@@ -9308,8 +8237,6 @@ Scheduled background check that verifies vault ciphertext hasn't been tampered w
 #### New files
 - static/vault-integrity-monitor.js (231 lines)
 - Integrity badge CSS appended to style.css
-
-
 ## [6.38.485] — 2026-04-13 — Team Activity Feed (live shared vault change stream)
 
 ### New feature: Org Activity Feed
@@ -9330,23 +8257,17 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - DELETE also fires create_notification() to all org admins when a shared credential is deleted
 - New file: static/org-activity-stream.js (245 lines)
 - Feed CSS added to style.css
-
-
 ## [6.38.484] — 2026-04-13 — Fix APP_VERSION: add constant to app.py as single source of truth
 
 ### Bug fix
 - The about page was still showing v6.38.326 even after a full rebuild because the APP_VERSION env var in the running container was stale (set at container start time from .env, which hadn't been updated before the rebuild was run).
 - Added APP_VERSION = "6.38.484" as a module-level constant in app.py. This is now the single source of truth — _site_page() and all other callers fall back to this constant if the env var isn't set, guaranteeing the correct version is always shown regardless of .env state.
 - All three APP_VERSION references in app.py (Sentry release, _site_page, changelog page handler) now use APP_VERSION constant as their fallback instead of hardcoded strings.
-
-
 ## [6.38.483] — 2026-04-13 — Fix about page version number always showing stale version
 
 ### Bug fix
 - Fixed: about page stat card was showing v6.38.326 (a very old version) instead of the current version.
 - Fix 2: updated app.py _site_page() fallback from 'unknown' to current version.
-
-
 ## [6.38.482] — 2026-04-13 — About page profile card: redesign to match site design system
 
 ### Redesign
@@ -9360,8 +8281,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Hover: subtle border brightening + 3px spring lift — consistent with other interactive cards on the page.
 - Tag stagger animation on scroll retained (CSS transition, no JS typing).
 - All font-family declarations use CSS vars — zero hardcoded font names in the card CSS.
-
-
 ## [6.38.481] — 2026-04-13 — Font consistency: fix app pages
 
 ### Bug fix
@@ -9371,8 +8290,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Fixed reset-password.html: was loading Inter + Space Grotesk. Replaced with IBM Plex Sans/Mono.
 - Remaining 'Inter' hits in index.html, landing.html, ai-transparency.html, extension-preview.html are all false positives (words like "Interactive", "International") — not font references.
 - All app pages now consistently use IBM Plex Sans (body/display) + IBM Plex Mono (code/mono) throughout.
-
-
 ## [6.38.480] — 2026-04-13 — Font consistency audit and fix
 
 ### Bug fix
@@ -9381,8 +8298,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - All other pages confirmed consistent: IBM Plex Sans (display + body) + IBM Plex Mono (code/labels). All use CSS vars (--display, --sans, --mono) that resolve to the same fonts.
 - Note: landing.html uses different CSS var names (--ffd, --ffb, --ffm) vs site pages (--display, --sans, --mono) — both resolve to the same fonts, no visible inconsistency.
 - Profile card (about.html) confirmed: all font-family declarations use CSS vars, no hardcoded values.
-
-
 ## [6.38.479] — 2026-04-13 — About page profile card: complete redesign
 
 ### Redesign
@@ -9394,8 +8309,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Bio text changed back to sans-serif — readable, not terminal-style. Typing animation retained with more natural pacing (pauses after punctuation, cursor fades out on completion).
 - Tags restyled as pills (border-radius:20px) with a subtle hover state — no aggressive glow.
 - Card hover lifts with a spring curve (cubic-bezier .34 1.56 .64 1) for a premium feel.
-
-
 ## [6.38.478] — 2026-04-13 — Fix CSP violations: extract inline scripts, refresh all hashes
 
 ### Security / bug fixes
@@ -9403,8 +8316,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Full audit of all 14 site pages confirmed only about.html had a remaining inline script issue (all others already clean from previous sessions).
 - Refreshed all inline script SHA-256 hashes in the main app.py CSP script-src directive. Previous hashes were stale (scripts had changed but hashes were never updated). All 9 hashes now match the actual current script content across landing.html, index.html, verify-email.html, updates.html, extension-preview.html, join.html, and admin.html.
 - Going forward: whenever an inline script changes in any of these files, the corresponding hash in app.py must be updated. The cleanest long-term solution is to move all inline scripts to external .js files (eliminating the hash maintenance burden entirely).
-
-
 ## [6.38.477] — 2026-04-13 — About page profile card: animations and visual polish
 
 ### New features
@@ -9416,8 +8327,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Skill tags: stagger in with a slide-up animation 300ms after typing begins.
 - Bio text moved to monospace font with a left border accent — reads like a terminal output.
 - All animations are CSS-only where possible; JS only drives the typing effect and tag stagger timing.
-
-
 ## [6.38.476] — 2026-04-13 — About page: live version number, better story
 
 ### Improvements
@@ -9427,24 +8336,18 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Updated hero subtext: removed generic framing, replaced with the core architectural argument.
 - Updated timeline 'Now' entry: reflects current actual state (browser extension, SSO, cloud backup, emergency access, groups, admin portal) with April 2026 date.
 - Removed stale mobile-menu HTML div that was still present in the page.
-
-
 ## [6.38.475] — 2026-04-13 — Fix landing footer layout (copyright floating top-right)
 
 ### Bug fix
 - Fixed: landing page footer had copyright bar floating to the top-right of the columns instead of sitting below them, leaving a large gap on the right side.
 - Root cause: two old bare `footer { display:flex; ... }` element rules earlier in the stylesheet were making the <footer> element itself a flex container. This caused footer-grid and footer-bottom to become side-by-side flex children instead of stacked blocks. Our .site-footer class rule didn't set display:block so it never overrode the earlier display:flex.
 - Fix: added display:block to .site-footer rule, which overrides the old element-level footer rules (class selector has higher specificity than element selector).
-
-
 ## [6.38.474] — 2026-04-13 — Fix landing page footer
 
 ### Bug fixes
 - Fixed: landing.html footer had several issues: missing FAQ link in Legal column, "Business" instead of "Enterprise" in Product column, footer-brand description was inline-styled only (no CSS class), inconsistent padding, no footer-brand p CSS rule.
 - Fixed footer HTML: added FAQ link, changed Business→Enterprise, added footer-brand-p class to the description paragraph, expanded Legal column to match site pages.
 - Fixed footer CSS: increased top padding from 16px to 48px, added footer-brand-p rule, consolidated and cleaned up redundant gap overrides, ensured 768px and 500px mobile breakpoints are present and correct.
-
-
 ## [6.38.473] — 2026-04-13 — Standardise footer across all site pages
 
 ### Improvements
@@ -9454,15 +8357,11 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Footer padding increased from 16px top to 40px for better visual breathing room.
 - Footer column h4 headings now consistently use the mono font with correct letter-spacing.
 - Footer column links now consistently use text-decoration:none.
-
-
 ## [6.38.472] — 2026-04-13 — Fix nav-drawer rendering on landing page
 
 ### Bug fix
 - Fixed: landing.html nav-drawer was also missing display:none on the base rule, meaning it could render as a visible strip on the landing page under the same conditions as security.html (backdrop-filter + position:fixed rendering edge cases). Added display:none to base rule and display:block to .open rule to match the fix applied to all 14 site pages in v6.38.469.
 - Full audit of all 14 site pages and landing.html confirmed clean: balanced CSS braces, no malformed </style tags, correct 900px media query, nav-drawer display:none present everywhere.
-
-
 ## [6.38.471] — 2026-04-13 — Fix security page nav strip: malformed </style tag
 
 ### Bug fix
@@ -9470,8 +8369,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - The </style> closing tag at the end of the existing CSS block was missing its > character — it read as '</style' with a newline instead of '</style>'. Browsers treated this as an unclosed tag and continued collecting content as part of the style attribute value, then found the real </style> much later.
 - This meant the entire nav-drawer CSS block (which was appended after the malformed close) was rendered as raw visible text on the page rather than parsed as CSS. The display:none rule never applied, so the drawer rendered in document flow as a text strip.
 - Fix: removed the spurious premature </style (keeping the nav-drawer CSS inside the single correct style block). The style block now has one balanced open/close pair with all CSS inside it.
-
-
 ## [6.38.469] — 2026-04-13 — Fix nav-drawer still visible on desktop
 
 ### Bug fix
@@ -9479,8 +8376,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Root cause: relying solely on transform:translateX(100%) to hide the drawer is fragile — some browsers, GPU configs or Cloudflare edge caching can cause position:fixed elements with backdrop-filter to not honour the transform correctly on initial paint.
 - Fix: added display:none to the nav-drawer base CSS rule (belt and suspenders alongside the transform). The .open class now sets both display:block and transform:translateX(0). This guarantees the drawer is invisible unless explicitly opened regardless of GPU/rendering edge cases.
 - Applied to all 14 site pages.
-
-
 ## [6.38.468] — 2026-04-13 — Fix CSP violations on site pages
 
 ### Bug fix
@@ -9489,8 +8384,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Extracted FAQ accordion toggle to /static/site/faq-accordion.js.
 - Extracted blog post TOC highlight script to /static/site/blog-toc.js.
 - All 14 site pages now have zero inline executable scripts — only type=application/ld+json structured data blocks remain inline, which are not governed by script-src.
-
-
 ## [6.38.467] — 2026-04-13 — Fix desktop nav broken on site pages (root cause)
 
 ### Bug fix
@@ -9499,8 +8392,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
   2. All other pages (about, blog, careers etc.) had the hamburger button with id=hamburger (old) instead of id=navHamburger (new). The drawer JS looks for navHamburger — with the wrong id the hamburger was wired to nothing and the drawer never opened.
 - Fix: removed all old mobile-menu HTML divs and CSS rules across all 14 site pages; standardised all hamburger buttons to id=navHamburger; re-added missing nav-drawer HTML to changelog.html which had been stripped during cleanup.
 - All 14 pages verified: balanced CSS braces, navHamburger present, navDrawer present, drawer JS present, no old navMobile remnants, no hamburger rule leaking outside media query.
-
-
 ## [6.38.466] — 2026-04-13 — Fix broken desktop nav on all site pages
 
 ### Bug fix
@@ -9508,8 +8399,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Root cause: the batch script that added mobile nav drawer to all 13 site pages injected .nav-cta{display:none} into the 900px media query with a missing closing brace. The malformed CSS was: .nav-links{display:none.nav-cta{...} instead of .nav-links{display:none}.nav-cta{...}. Browsers parsed this as .nav-hamburger{display:flex} falling OUTSIDE the @media block, making the hamburger always visible and the nav always in mobile state on desktop.
 - Additional: fixed orphaned double-closing braces }} in keyframe animations on blog.html, careers.html, about.html (50% keyframe had extra }) and footer media queries on contact.html and cookies.html (3 extra } each).
 - All 14 site pages verified: CSS braces balanced, nav-links flex base rule present, 900px media query correct, no rules leaking outside media query.
-
-
 ## [6.38.465] — 2026-04-13 — SSO end-to-end fix
 
 ### Bug fixes
@@ -9518,8 +8407,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Fixed: loadSsoConfig() now fetches current config from /api/admin/sso/config on section load and pre-populates all form fields, so the admin sees the current state rather than empty fields every time.
 - The Test Login Flow button correctly initiates a SAML SP redirect via /api/sso/login?org_id=X.
 - python3-saml==1.16.0 is already in requirements.txt. The full SAML flow (SP-initiated login, ACS, metadata, SLO) was already implemented; this release wires the admin configuration UI to actually persist the IdP settings.
-
-
 ## [6.38.464] — 2026-04-13 — Security hardening, mobile nav, groups UI
 
 ### Security fixes
@@ -9532,14 +8419,10 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 
 ### New feature: Groups UI (Settings → Team)
 - Users on team/enterprise plans can now create and manage org groups from Settings → Team tab. Create named groups, add/remove members via a modal, and delete groups. Groups control folder access — members inherit the folder permissions of every group they belong to. Requires vault authentication (as opposed to admin portal) so zero-knowledge key derivation is available for folder key grants.
-
-
 ## [6.38.462] — 2026-04-13 — Add changelog debug endpoint
 
 ### Added
 - Added /api/changelog/debug endpoint to diagnose live server CHANGELOG.md parsing without shell access. Returns file path, size, block count, matched entries count, and first entry details.
-
-
 ## [6.38.461] — 2026-04-13 — Fix changelog showing 0 releases: root cause resolved
 
 ### Bug fixes
@@ -9548,8 +8431,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
   2. The API function used blocks[:50] — only reading the first 50 blocks of the file. Since our new entries were at line 6000+, they were never reached.
   3. No version-number sorting in the API, so even if entries were found they might not be in newest-first order.
 - Fix: rebuilt CHANGELOG.md by deduplicating all entries (keeping the most complete version of each), sorting newest-first by version number (304 unique entries). Fixed API to read up to 200 blocks and sort entries by version tuple before returning.
-
-
 ## [6.38.460] — 2026-04-10 — Fix changelog page still showing 0 releases
 
 ### Bug fixes
@@ -9557,8 +8438,6 @@ Real-time feed showing who did what to shared credentials in the team vault. App
   1. changelog.html had a hardcoded 'Latest: v6.38.70' text baked into the HTML that only updates if the JS successfully loads entries. Added id='cl-ver-badge' and changed initial text to 'Loading...' so the stale version never shows.
   2. Both changelog-page.js and updates.html were fetching /api/changelog without cache-busting, meaning the server or browser could return a cached empty response. Added ?v=Date.now() + cache:'no-store' to force a fresh response every time.
 - Note: the core regex fix was in v6.38.459. This release makes the page resilient to caching issues that were masking whether the fix had deployed.
-
-
 ## [6.38.459] — 2026-04-10 — Fix changelog page never showing any entries
 
 ### Bug fix
@@ -9566,24 +8445,18 @@ Real-time feed showing who did what to shared credentials in the team vault. App
 - Root cause: the header_pat regex in get_changelog() used [--] as the separator character class, which matches only ASCII hyphen (-). Every entry in CHANGELOG.md uses an em dash (—, U+2014) as the separator. The regex never matched a single entry, returning an empty list to both pages on every request.
 - Fix: changed [--] to [—-]+ which matches em dash, ASCII hyphen, or any combination. All 326 existing changelog entries now parse correctly.
 - Both /changelog (changelog-page.js) and /updates (updates.html) fetch from /api/changelog, so both pages are fixed by this single change.
-
-
 ## [6.38.458] — 2026-04-10 — Fix 'How your passwords stay safe' section mobile layout
 
 ### Bug fixes
 - Rewrote the How It Works section CSS as mobile-first. Was a 3-col grid that awkwardly collapsed to 2-col (leaving a lone 3rd card) at 820px and then 1-col at 560px. New approach: 1-col stacked on all mobile/tablet, expanding to 3-col only at ≥821px. Card padding reduces progressively (20px mobile → 24px tablet → 28px desktop). Arrow connectors (→) between steps only appear on desktop; a subtle vertical line separator appears between stacked mobile cards instead.
 - Removed conflicting legacy .hiw-grid CSS that was still in the stylesheet but unused by the HTML, including an orphaned closing brace left by a previous cleanup that was causing a CSS brace imbalance.
 - Cleaned up: old @media(max-width:760px) hiw-grid override removed.
-
-
 ## [6.38.457] — 2026-04-10 — Roadmap mobile responsiveness
 
 ### Mobile fixes
 - Roadmap breakpoints: was collapsing to 1-col at 820px (causes very long scroll with 13 NOW items). Now 2-col at 481–820px (NOW + NEXT side by side, COMING wraps below spanning full width), then 1-col at ≤480px.
 - Stagger animation extended from 6 items to 13 to cover the full NOW column.
 - rm-track 1-col forced via !important at ≤480px in global mobile rule.
-
-
 ## [6.38.456] — 2026-04-10 — Roadmap: add missing built features + new planned items
 
 ### Roadmap content
@@ -9601,8 +8474,6 @@ COMING column (7 items — planned):
 - Added: AI-Assisted Password Fixing (HexGuard navigates to site and changes weak/breached passwords automatically)
 - Added: Self-Hosted / On-Premise (air-gapped enterprise deployment, data never leaves your servers)
 - Removed: duplicate items that were already covered by the Enterprise Suite
-
-
 ## [6.38.455] — 2026-04-10 — Landing page comprehensive mobile pass
 
 ### Mobile fixes
@@ -9613,8 +8484,6 @@ COMING column (7 items — planned):
 - Roadmap items: reduced padding at ≤480px for more comfortable viewing in single-column layout.
 - Comparison table: font-size reduced to 11px at ≤480px; feature column gets min-width:100px to prevent collapse.
 - Global 480px rule: removed the blunt * { max-width:100% } that was previously breaking flex/grid layouts; replaced with targeted box-sizing and img/video/canvas constraints.
-
-
 ## [6.38.454] — 2026-04-10 — Fix security spec grid empty slot + roadmap equal-height columns + NOW content
 
 ### Bug fixes
@@ -9624,29 +8493,21 @@ COMING column (7 items — planned):
 ### Content updates
 - Roadmap NOW column: added Browser Extension (Chrome & Firefox, submitted to Chrome Web Store) and split Enterprise Suite back into IT Admin Dashboard and SSO/SAML 2.0 as separate items. Changed phase tag from 'Live / In Testing' to 'Live'. NOW column now accurately reflects all shipped features.
 - Roadmap NOW: 10 items — Web Vault, HexGuard AI, Live Breach Monitoring, TOTP Authenticator, Browser Extension, Passkeys/WebAuthn, Secure Send, Family Vault, IT Admin Dashboard, SSO/SAML 2.0.
-
-
 ## [6.38.453] — 2026-04-10 — Fix security page layout + roadmap grid
 
 ### Bug fixes
 - Fixed: security page content was pushed hard-left with no padding or max-width centering. Root cause: the .nbrand:hover CSS rule was missing its {} block and had blank lines before .wrap{...}. The browser parsed this as the descendant selector .nbrand:hover .wrap{} instead of a standalone .wrap{} rule, so the container's max-width:1100px and margin:0 auto never applied. Fixed by adding .nbrand:hover{} before the .wrap rule.
 - Fixed: security page spec grid (stat-strip) had 7 cells in a 3-column grid, leaving 2 empty grey slots in the bottom row. Changed grid-template-columns from repeat(3,1fr) to repeat(auto-fit,minmax(200px,1fr)) so cells fill available space with no empty slots.
 - Fixed: roadmap NOW column had too many items (18) causing the 3-column grid to stretch vertically and leave large empty space below NEXT and COMING columns. Added align-items:start to .rm-track and trimmed NOW column to 9 items by consolidating enterprise features into a summary item.
-
-
 ## [6.38.452] — 2026-04-10 — Fix roadmap layout broken by oversized NOW column
 
 ### Bug fixes
 - Fixed: roadmap three-column layout was broken — the NOW column had 18 items (from content updates), making it ~4x taller than NEXT and COMING. CSS grid stretches all columns to the tallest by default, leaving giant empty space under NEXT and COMING. Fixed by adding align-items:start to .rm-track so each column is only as tall as its own content.
 - Fixed: NOW column trimmed from 18 items to 9 by consolidating all enterprise features into a single 'Enterprise Suite' summary item. Keeps the roadmap scannable without losing accuracy.
-
-
 ## [6.38.451] — 2026-04-10 — Fix JS syntax error in settings-handler.js
 
 ### Bug fix
 - Fixed: unescaped apostrophe in GDPR confirmation message ('You'll receive an email') inside a single-quoted string in settings-handler.js caused a SyntaxError that silently broke all settings JS on load. Changed surrounding quotes to double-quotes to resolve the conflict.
-
-
 ## [6.38.450] — 2026-04-10 — Policy enforcement + full roadmap update
 
 ### Feature: session timeout policy enforcement
@@ -9660,8 +8521,6 @@ COMING column (7 items — planned):
 - IT Admin Dashboard moved from COMING to NOW.
 - NEXT column updated: Browser Extension removed (now live), password import removed (now live).
 - COMING column updated with realistic planned items: Passkey-First Login, Real-Time Breach Push (SSE), Advanced Analytics, SCIM Provisioning, Digital Estate Planning.
-
-
 ## [6.38.449] — 2026-04-10 — Fix admin refresh-logout: session flag missing on fresh login
 
 ### Bug fix
@@ -9671,8 +8530,6 @@ COMING column (7 items — planned):
   2. The F5 after that would set the flag → the F5 after THAT would finally trigger logout — causing the behaviour to fire every other refresh rather than every refresh.
   3. In some race conditions (e.g. after a session-timeout redirect to /admin/login that did not clear sessionStorage), admin_session_active from a previous session was still present when the fresh login arrived, causing an immediate logout.
 - Fix: the ?fresh=1 path now also calls sessionStorage.setItem('admin_session_active', '1') before returning. Every scenario — fresh login, bookmark, session timeout re-login, sequential admins on same tab — now correctly marks the session as active, and every subsequent F5 correctly triggers logout.
-
-
 ## [6.38.448] — 2026-04-10 — Landing page: content updates + mobile fixes
 
 ### Content updates
@@ -9689,22 +8546,16 @@ COMING column (7 items — planned):
 - Added: explicit mobile breakpoints for hero CTA buttons, section padding reduction at < 480px, and tablet-small range (481–640px) refinements.
 - Added: plat-grid already had 900px and 480px breakpoints (were correct — 2-col on mobile).
 - Added: hform-row flex-wrap for intermediate screen widths.
-
-
 ## [6.38.447] — 2026-04-10 — Fix admin immediate logout on login
 
 ### Bug fix
 - Fixed: admin dashboard immediately redirected back to /admin/login as soon as login completed. Root cause: the sessionStorage presence strategy introduced in v6.38.445 was ambiguous — sessionStorage persists across same-origin page navigations in the same tab, so if admin_session_active was present from any previous /admin visit (including expired sessions that were redirected away by the 401 interceptor without clearing storage), it would trigger a logout on the very next /admin load even if admin_just_logged_in was also set.
 - Fix: replaced the dual-flag sessionStorage approach with a URL parameter strategy. admin-login.js now redirects to /admin?fresh=1 instead of /admin. _setupRefreshLogout() checks for ?fresh=1 in the URL: if present, it strips it via history.replaceState() and returns immediately (fresh login, no logout). If absent, it checks admin_session_active in sessionStorage — if that is present, it is a genuine F5/Ctrl+R reload and triggers logout. The URL parameter cannot survive a page refresh, making it completely reliable across all browsers and session states.
-
-
 ## [6.38.446] — 2026-04-10 — Admin refresh-logout: clean state on manual sign-out
 
 ### Fix
 - doLogout() now calls sessionStorage.clear() before redirecting to /admin/login. This ensures the admin_session_active flag used by the refresh-logout mechanism is wiped when an admin deliberately signs out, so the next admin who logs in on the same tab (sequential shared-computer scenario) gets a clean slate and the F5-logout detection works correctly for them.
 - Note: sessionStorage is tab-isolated in all browsers — there is no cross-contamination between different admin accounts open in different tabs. This fix only addresses the sequential same-tab scenario.
-
-
 ## [6.38.445] — 2026-04-10 — Admin dashboard: toggle fix, dropdown width, live updates, reliable refresh logout
 
 ### Bug fixes
@@ -9714,8 +8565,6 @@ COMING column (7 items — planned):
 
 ### Already working (no change needed)
 - Promoting/demoting member to admin updates live: toggleAdmin() calls loadMembers() on success, which now refreshes the table silently (no flicker) per the v6.38.443 fix.
-
-
 ## [6.38.444] — 2026-04-10 — Fix MPA vote 401 + branded rejection modal
 
 ### Bug fix: MPA approve/reject returning 401
@@ -9723,8 +8572,6 @@ COMING column (7 items — planned):
 
 ### Improvement: branded rejection reason modal
 - Replaced the browser native window.prompt('Reason for rejection') dialog with a branded HexVault modal matching the admin dashboard design. Features: blurred backdrop overlay, rose-tinted icon, optional textarea for rejection reason, Cancel and Reject buttons with the correct brand gradient, Escape key and backdrop click to dismiss, loading state while the request is in flight.
-
-
 ## [6.38.443] — 2026-04-10 — Fix admin dashboard 401 errors on load
 
 ### Bug fix
@@ -9735,50 +8582,34 @@ COMING column (7 items — planned):
 **Fix:** Two-part sessionStorage flag approach:
 - `admin-login.js` now sets `admin_just_logged_in = '1'` in sessionStorage immediately before both step-1 and step-2 (TOTP) redirects to `/admin`
 - `_setupRefreshLogout()` reads and immediately consumes the flag on entry; if present it returns early without triggering logout. A subsequent real F5/Ctrl+R refresh will not have the flag and still triggers the intended logout-on-refresh behaviour.
-
-
 ## [6.38.362] — 2026-04-06 — Fix skip-link visibility and content centering
 - Fixed: 'Skip to main content' was visible on security.html and faq.html. The skip-link used position:absolute with top:-40px, but body has padding-top:64px — so the element sat at 64px-40px=24px from the viewport top, making it visible. Changed to position:fixed which takes it out of the document flow entirely.
 - Fixed: security.html content left-flush. Wrap given explicit display:block, width:100%, and box-sizing:border-box to ensure margin:0 auto centres correctly within the flex column layout. main given explicit width:100%.
 - Fixed: wrap max-width:900px was too narrow — updated to 1100px with proper horizontal padding to match other pages.
-
-
 ## [6.38.361] — 2026-04-06 — Centre security page content
 - Fixed: security.html content appeared flush to the left edge. The .wrap container had max-width:900px which was too narrow relative to the viewport, and the horizontal padding clamp(16px,5vw,64px) was too tight on larger screens.
 - Fix: .wrap max-width increased to 1100px (matching legal pages like privacy.html/terms.html) and minimum horizontal padding raised to clamp(20px,5vw,56px). Content now centres properly with consistent margins matching the rest of the site.
 - TOC sidebar column widened from 192px to 220px to maintain good proportions at the wider layout width.
-
-
 ## [6.38.360] — 2026-04-06 — Fix undefined CSS vars causing colour loss across site
 - Fixed: security.html had 16 undefined CSS variables (--v2, --em, --cy, --go, --mu, --bd, --black, --white etc). The whitepaper content CSS relies heavily on these brand accent vars for its coloured labels, monospace highlights, and stat strip values. Without them everything rendered flat/colourless. Added all legacy aliases back to :root alongside the canonical vars.
 - Fixed: faq.html had 4 undefined vars (--accent, --font-sans, --font-mono, --text-muted) — page-specific CSS used different naming conventions. Added aliases.
 - Fixed: about.html had 1 undefined var (--r2) used for border-radius on activity cards. Added --r2:12px.
 - All 14 static pages now pass a zero-undefined-var audit.
-
-
 ## [6.38.359] — 2026-04-06 — Fix cookies.html font (Inter → IBM Plex Sans)
 - Fixed: cookies.html was using Inter as its font family (--sans:'Inter',-apple-system,sans-serif) while every other page uses IBM Plex Sans. This made the cookies page visually inconsistent with the rest of the site.
-
-
 ## [6.38.358] — 2026-04-06 — Fix double nav padding on blog and careers
 - Fixed: blog.html and careers.html had a massive gap between the nav and content. Root cause: these pages already handle the fixed nav offset with padding-top:calc(64px + clamp(...)) in their hero CSS. Adding body padding-top:64px on top of that created double the offset — 128px+ of blank space.
 - Fix: Removed body padding-top:64px from blog.html and careers.html. All other pages (which don't have their own nav offset calc) retain the body padding-top:64px.
-
-
 ## [6.38.357] — 2026-04-06 — Rebuild security.html to match site design
 - Rebuilt: security.html completely from scratch using the canonical site template (same structure as about.html, blog.html, etc.). Previous attempts to patch the old page left a tangle of conflicting CSS systems and old design patterns.
 - Now uses: identical :root CSS vars (--bg, --text, --muted, --border, --sans, --mono), identical nav (fixed position, backdrop-filter, 6 links, hamburger), identical footer (4-column site-footer), same body layout, same IBM Plex Sans font.
 - Preserved: all 13 whitepaper sections, all 13 TOC links, all content HTML, sticky TOC with max-height scroll, security-page.js scroll reveals and TOC highlighting, site.js hamburger and TOC.
 - Security link highlighted as active in nav and footer Product column.
-
-
 ## [6.38.356] — 2026-04-06 — Fix security.html design system mismatch
 - Fixed: security.html was using the old CSS design system (--black, --white, --mu, --bd, --v, --ff, --ffm) while all other pages use the new canonical system (--bg, --text, --muted, --border, --indigo, --sans, --mono). This caused visual inconsistency — wrong background shade, wrong colour palette, and the page standing apart from the rest of the site.
 - Fix: Updated :root CSS vars to the canonical design system, adding legacy aliases (--black:var(--bg), --white:var(--text), --ff:var(--sans) etc.) so the page's existing content CSS continues to work without rewriting 500+ lines of whitepaper styles.
 - Updated body CSS to use --bg and --sans directly.
 - All 13 whitepaper sections and TOC links intact.
-
-
 ## [6.38.355] — 2026-04-06 — Security page layout fixed, TOC improvements
 - Fixed: security.html content was sliding under the fixed nav bar. The new nav (added in 6.38.354) is position:fixed at 64px height but body had no padding-top. Added padding-top:64px to body.
 - Fixed: security.html was missing site.js — TOC highlight JS never ran. Added site.js load before security-page.js.
@@ -9787,21 +8618,15 @@ COMING column (7 items — planned):
 - Fixed: TOC bottom detection threshold in site.js — changed from docH-40 to docH-100 so the last TOC item activates before the very last pixel.
 - Fixed: TOC section trigger threshold lowered from 30% to 20% of viewport height — sections register active earlier as user scrolls.
 - Added: max-height:calc(100vh-96px) + overflow-y:auto to legal-toc (privacy) and toc-wrap (security) containers — TOC scrolls independently on very long pages.
-
-
 ## [6.38.354] — 2026-04-06 — Fix security.html nav (still using old nav pattern)
 - Fixed: security.html was still showing the old nsec-links nav (Blog, FAQ, Contact, Status only) from early sessions. All other pages showed 6 links (Pricing, Security, FAQ, Blog, About, Contact) — security page showed only 4 and in a completely different visual style.
 - Replaced: Old nav (nbrand/nlogo/nword/nsec-links/nback CSS classes, old logo markup) with the standard nav template matching all other static pages — fixed position, backdrop-filter, full 6-link nav-links ul, sign in and Start free trial buttons, hamburger + mobile menu.
 - Added: Standard nav CSS to security.html style block, removed old nav-specific CSS (nbrand, nlogo, nback, nsec-link rules).
-
-
 ## [6.38.353] — 2026-04-06 — Full nav and footer consistency pass
 - Fixed: Comprehensive audit revealed nav and footer drift across all 14 static pages. FAQ, Blog, and Pricing missing from desktop nav on most pages. Mobile nav missing FAQ, Blog, and Pricing on nearly every page. Footer Legal column missing FAQ, sub-processors, cookies, and status on multiple pages. Footer Company column missing careers and blog on several pages.
 - Fix: Applied canonical nav (Pricing, Security, FAQ, Blog, About, Contact) to desktop and mobile nav on all 13 pages (security.html uses different nav structure). Applied canonical footer (Product, Company, Legal all columns complete) to all 14 pages.
 - Fixed: security.html nsec-links updated to include Blog, FAQ, Contact, Status.
 - Fix approach: automated audit script now verifies every page against canonical link sets — run before any release to catch drift early.
-
-
 ## [6.38.352] — 2026-04-06 — Sentry tunnel, profile pic, rate limiters, favicon, FAQ route
 
 ### Sentry
@@ -9822,8 +8647,6 @@ COMING column (7 items — planned):
 - Added: hexguard_chat — 30/hr (calls Anthropic API, no previous limit).
 - Added: connect_cloud_backup — 10/hr.
 - Added: create_manual_backup — 10/hr.
-
-
 ## [6.38.336] — 2026-04-05 — Admin dashboard and app improvements
 
 ### Admin dashboard: missing UI panels wired up
@@ -9873,8 +8696,6 @@ loadGroups, createGroup, deleteGroup, loadGdprRequests, resolveGdprRequest,
 loadMemberActivity, loadWebhookConfig, saveWebhook, loadGeoBlocking, saveGeoBlocking,
 loadOnboardingChecklist, updateBulkBar, clearBulkSelection, bulkSend2faReminder, bulkDeactivate.
 All wired into nav() section switching and the central data-action click dispatcher.
-
-
 ## [6.38.335] — 2026-04-05 — Six new features
 
 ### 1. Password expiry reminders (background task)
@@ -9910,8 +8731,6 @@ All wired into nav() section switching and the central data-action click dispatc
 - GET/PUT /api/admin/geo-blocking — PUT routes through MPA (2 approvals). New MPA action: update_geo_blocking.
 - Login flow checks org geo-block before granting session. Fails open if GeoIP unavailable.
 - Uses geoip2 + maxminddb-geolite2 (bundled free DB). GEOIP_DB_PATH env var for custom DB.
-
-
 ## [6.38.334] — 2026-04-05 — Tier gating fully enforced
 
 All paid features now properly gated. Previously several features were accessible to any authenticated user regardless of subscription.
@@ -9939,8 +8758,6 @@ All paid features now properly gated. Previously several features were accessibl
 
 ### Syntax fixes
 - 21 gate injection newline errors fixed (gate line was concatenated onto next statement).
-
-
 ## [6.38.333] — 2026-04-05 — Missing pieces fixed
 
 - FIXED: Orphaned _safe() calls at end of app.py — family_member_keys table and vault_key_version column were defined outside any function and never ran. Moved into setup_database() so they execute on every startup. This was silently breaking family vault on clean deploys.
@@ -9950,8 +8767,6 @@ All paid features now properly gated. Previously several features were accessibl
 - NOTE: sw.js exists at static/sw.js and is served correctly by Flask. The serve_sw() path was already correct — no issue.
 - NOTE: Stripe not yet configured — price IDs and webhook secret still need adding to .env when ready.
 - NOTE: Landing page CTAs route to /app (free trial flow) — Stripe checkout integration deferred until keys are configured.
-
-
 ## [6.38.332] — 2026-04-05 — Multi-party approval (MPA) fully wired
 
 MPA infrastructure existed but was never triggered — all sensitive admin actions now route through it.
@@ -9975,8 +8790,6 @@ Default approval thresholds (overridable per org via org_approval_policies):
 - promote_member: 2 approvals
 - transfer_org_ownership: 3 approvals
 - delete_org: 3 approvals
-
-
 ## [6.38.331] — 2026-04-05 — Live security dashboard (SSE) + full security audit fixes
 
 ### Live Security Dashboard
@@ -9996,8 +8809,6 @@ Default approval thresholds (overridable per org via org_approval_policies):
 - skip-reencryption rate limited (5/hr).
 - Admin login success/failure logged to security_log for cross-system visibility.
 - SSRF protection on org_logo_url (must be HTTPS image URL with image extension).
-
-
 ## [6.38.330] — 2026-04-05 — Full security audit: 15 vulnerabilities fixed
 
 Hacker-eye security audit — all findings addressed:
@@ -10013,8 +8824,6 @@ Hacker-eye security audit — all findings addressed:
 9. Admin login success and failure now also logged to security_log (previously only admin_audit_log) — cross-system visibility.
 10. SSRF protection on org_logo_url — must be a valid HTTPS URL with image extension.
 11. Docstring syntax fixes on admin_portal_slug.
-
-
 ## [6.38.329] — 2026-04-05 — Admin portal security audit fixes + Cloudflare Access
 
 All issues from security audit resolved:
@@ -10028,37 +8837,27 @@ All issues from security audit resolved:
 - FIXED: Two docstring syntax errors (missing newline before try:) in admin_portal_slug and admin_pending_setup.
 - NEW: Cloudflare Access integration. _verify_cf_access_token() called at the top of require_admin_auth — verifies CF-Access-Jwt-Assertion header JWT against Cloudflare public keys (JWKS, 1-hour cache). Completely skipped if CF_ACCESS_AUD not set (backwards compatible). Adds a full identity layer before the admin portal is even visible.
 - NEW: ADMIN_SECURITY.md — step-by-step Cloudflare Access setup guide.
-
-
 ## [6.38.328] — 2026-04-05 — Admin resend setup link UI complete
 - Added: 'Pending Account Setup' card in the Administrators section of the admin portal. Shows any admins who have been sent a setup link but haven't completed registration, with sent and expiry timestamps. Card is hidden when there are no pending setups.
 - Added: 'Resend link' button per pending row — triggers resendSetupFromPanel() which reads org data from the already-loaded _orgData, calls resend endpoint, and refreshes the pending list.
 - Added: GET /api/admin/pending-setup — returns all unused unexpired setup tokens for the current org.
 - Added: resendSetupFromPanel() wrapper in admin-panel.js — reads org context automatically so the button needs no extra data attributes.
 - Fixed: docstring/try: newline issue in admin_pending_setup endpoint.
-
-
 ## [6.38.327] — 2026-04-05 — Org admin setup flow, resend link endpoint
 - Clarified: org admin flow — when a company creates an organisation, HexVault automatically emails their own address a one-time setup link. They set their own password and log into /admin-login with their company email. Their admin view is scoped to their org only.
 - Added: POST /api/admin/resend-setup — super admin only. Generates a fresh 48-hour setup link for any org owner whose original email was missed or token expired. Invalidates any existing unused token. If email delivery fails, returns the URL directly so it can be shared manually.
 - Added: resendSetupLink() function in admin-panel.js — confirmation dialog, calls resend endpoint, surfaces URL fallback if email fails. UI button wiring pending next session.
 - Fixed: app.py SSO tier gate now includes team tier. subscriptions CHECK constraint corrected (teams → team). enterprise-handler.js SSO eligibility updated.
-
-
 ## [6.38.326] — 2026-04-05 — Full codebase stale reference cleanup
 - Fixed: app.py subscriptions table CHECK constraint had 'teams' (wrong) — corrected to 'team'.
 - Fixed: app.py SSO tier check — now allows 'team' tier alongside 'enterprise'/'business', and error message updated to 'Team or Enterprise tier'.
 - Fixed: enterprise-handler.js SSO eligibility check — added 'team' to allowed tiers.
 - Fixed: email_service.py inbox fallback address — was 'noreply@hexvault.co.uk', now 'hello@hexvault.co.uk'. FROM_EMAIL sending address (noreply@) intentionally unchanged.
 - Fixed: static/site/contact-page.js — error alert was showing 'noreply@hexvault.co.uk', now 'hello@hexvault.co.uk'.
-
-
 ## [6.38.325] — 2026-04-05 — Legal pages pricing and date fixes
 - Fixed: terms.html section 5 — pricing completely wrong. Was showing Family £7.99 (should be £9.99) and 'Business' tier (does not exist). Now shows all 5 tiers correctly: Personal £3.99, Pro £6.99, Family £9.99/up to 6 members, Team £8.99/seat, Enterprise custom. Annual prices included for each.
 - Fixed: privacy.html — tier names in overview were 'Personal, Family, and Business'. Now correct: Personal, Pro, Family, Team, and Enterprise. 'Business tier' audit trail reference updated to 'Team and Enterprise tiers'.
 - Fixed: terms.html, privacy.html, cookies.html — 'Last updated' dates updated from 28 March 2026 to 5 April 2026.
-
-
 ## [6.38.324] — 2026-04-05 — Full site consistency pass
 - Fixed: Trust Centre and Sub-processors links added to footer legal column on all pages (about, blog, careers, changelog, contact, cookies, status, terms). security.html had a different footer structure — updated separately.
 - Fixed: Nav /pricing → /#pricing across all static/site pages (was 404ing).
@@ -10066,15 +8865,11 @@ All issues from security audit resolved:
 - Fixed: security.html footer — was still using /privacy-policy and /terms-of-service (old routes). Updated to /privacy and /terms. Added blog, trust, sub-processors links.
 - Fixed: noreply@ fully eliminated from all pages. contact.html — security disclosures now route to security@hexvault.co.uk. terms.html — security notification routes to security@. landing.html — Enterprise CTA buttons and JSON-LD contactPoint now use hello@.
 - Fixed: status.html footer legal column — added Trust Centre and Sub-processors.
-
-
 ## [6.38.323] — 2026-04-05 — First blog post, blog index page
 - Added: First blog post — 'Why per-entry key derivation matters' at /blog/why-per-entry-key-derivation-matters. 2,400 words. Full SEO: BlogPosting schema, og:article tags, canonical, breadcrumb nav, sticky TOC, active-section highlighting.
 - Updated: /blog page — replaced coming-soon placeholder with real post index. noindex removed. Post card grid with featured card for live post, upcoming cards for next two.
 - Added: /blog/why-per-entry-key-derivation-matters route in app.py.
 - Updated: sitemap.xml — blog post URL added.
-
-
 ## [6.38.322] — 2026-04-05 — Full code audit: CSP hashes, family vault shared crypto
 
 Audit findings fixed:
@@ -10095,12 +8890,8 @@ Audit items confirmed clean (no changes needed):
 - DB schema: 56 tables with proper IF NOT EXISTS guards, 63 ALTER TABLE migration guards
 - CSP: frame-ancestors none, form-action self, object-src none, HSTS, CORS locked to hexvault.co.uk
 - All 8 JS files syntax-clean
-
-
 ## [6.38.321] — 2026-04-05 — Fix landing.html Quirks Mode (missing DOCTYPE)
 - Fixed: Stray string prepended to landing.html during demo section build caused DOCTYPE to be pushed down, triggering browser Quirks Mode. Removed orphaned line — DOCTYPE is now the first line of the file.
-
-
 ## [6.38.320] — 2026-04-05 — Stripe alignment, sitemap, routing, copy and email fixes
 - Fixed: Team card in upgrade modal had data-plan='enterprise' — corrected to 'team'.
 - Fixed: Upgrade modal CTA routing — personal/pro/family now call startCheckout(plan) when Stripe is configured; team → mailto; enterprise-custom → mailto.
@@ -10110,8 +8901,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: Demo email changed from mike@example.com to user@company.com.
 - Fixed: Landing page hero tag updated from 'Early Access Open' to 'Available now — 14-day free trial'.
 - Fixed: Privacy policy contact section differentiated — privacy@ for GDPR, security@ for disclosures, hello@ for general.
-
-
 ## [6.38.319] — 2026-04-05 — Trust centre, sub-processor list, compliance pages
 - Added: /trust — Trust Centre page. SOC 2/ISO 27001 compliance status, full security controls table, data retention schedule, sub-processor summary, DPA request CTA, incident response procedure.
 - Added: /sub-processors — GDPR Article 28 sub-processor list. Stripe, Postmark, Cloudflare, HIBP, Sentry — each with data category, country, transfer mechanism (UK IDTA/EU SCCs), and added date. Change history section.
@@ -10119,8 +8908,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: All legal page contacts updated from noreply@ to privacy@ (GDPR enquiries) — security@ already correct on trust/sub-processor pages.
 - Updated: Privacy policy third-parties section links to /sub-processors.
 - Updated: Trust Centre link added to footer Legal column on privacy.html, terms.html.
-
-
 ## [6.38.318] — 2026-04-05 — Interactive landing page demo
 - Added: Interactive product demo section on landing page — no account needed, runs entirely in browser.
 - Demo tab 1 (Passwords): Live password list with reveal/hide toggle, add button, strength badges. Uses crypto.getRandomValues for fake password display.
@@ -10129,16 +8916,12 @@ Audit items confirmed clean (no changes needed):
 - Added: Demo nav link in desktop navigation.
 - Fixed: JS quote conflict in hover handlers — replaced with CSS class .demo-pw-row.
 - Added: Responsive CSS for demo on mobile.
-
-
 ## [6.38.317] — 2026-04-05 — Security whitepaper expanded, public pages updated
 - Expanded: security whitepaper (/security) from 9 to 13 sections — added Two-Factor Auth (TOTP replay protection + WebAuthn comparison table), Session Security (full controls table including vault key memory handling), Org Vault Cryptography (ECDH key grant flow, cryptographic separation, offboarding), Hash Migration (PBKDF2 → bcrypt upgrade path).
 - Fixed: comparison table — Bitwarden now correctly shown as supporting Argon2id (19 MB default vs our 64 MB, not 0 MB).
 - Added: per-entry salt to stat strip.
 - Updated: whitepaper date to April 2026, TOC expanded to 13 entries, meta description updated.
 - Updated: about.html timeline — 'Enterprise features in development' updated to reflect shipped state.
-
-
 ## [6.38.316] — 2026-04-05 — Landing page and public pages updated for 5-tier pricing
 - Added: Family plan card to landing.html pricing section — £9.99/mo monthly, £7.99/mo annual, up to 6 members. Participates in monthly/annual billing toggle.
 - Updated: landing.html pricing grid from 4 to 5 columns with responsive breakpoints (3-col at 1200px, 2-col at 800px, 1-col at 520px).
@@ -10147,8 +8930,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: Roadmap — Enterprise Tier item updated from 'coming soon' to 'live' with correct description.
 - Fixed: Feature chips — HexGuard chip updated to 'Pro, Family ## [6.38.315] Team'. Family Vault chip updated to 'Family Plan'.
 - Fixed: faq.html — HexGuard availability updated from 'Pro and Enterprise' to all paid tiers.
-
-
 ## [6.38.315] — 2026-04-05 — Family tier + pricing, family/personal vault separation
 - Added: Family plan card in upgrade modal — £9.99/mo, up to 6 members, sits between Pro and Team. Full Pro features + shared family vault for each member.
 - Fixed: CRITICAL — Personal passwords were appearing in the Family Vault. Root cause was a rogue loadFamilyPasswords() inside switchVault() scope that wrote into #passwordList (personal vault container). Removed it entirely.
@@ -10159,38 +8940,28 @@ Audit items confirmed clean (no changes needed):
 - Added: Responsive CSS for 5-plan upgrade modal grid (2-col at 860px, 1-col at 500px).
 - Added: Family CTA in upgrade modal wired to upgradeToPro().
 - Updated: plansGrid expanded to 5 columns.
-
-
 ## [6.38.314] — 2026-04-05 — Fix family vault showing personal passwords
 - Fixed: CRITICAL — Personal passwords were appearing in the Family Vault. Root cause: family-vault-handler.js had a rogue loadFamilyPasswords() function inside switchVault scope that wrote into #passwordList (the personal vault container). The correct loadFamilyPasswords() writes to #familyPasswordsList inside #familyTabContent.
 - Fixed: switchVault('family') now activates vault-tab[data-tab='family'] which shows #familyTabContent — a completely separate container from personal passwords.
 - Fixed: showFamilyVaultTab() no longer injects a confusing inner-tab into the My Vault header — instead makes the existing top-level family vault-tab visible.
 - Fixed: renderFamilyPasswords() now targets #familyPasswordsList (correct) instead of #passwordList (personal vault).
 - Result: Personal vault and Family Vault are now fully separated containers with no shared DOM.
-
-
 ## [6.38.313] — 2026-04-05 — IAM sidebar redesign, custom dialogs everywhere, dev toggle fix
 - Redesigned: IAM sidebar with card background (rgba white .02), correct border, tighter label sizing, proper active state using brand purple #8b7fff/a89fff.
 - Fixed: Dev Mode toggle now visible in dev environment — wireDevModeToggle() only hides section when server explicitly returns available:false (production). In dev mode available is undefined so section shows.
 - Replaced ALL native browser prompt()/confirm()/alert() calls with custom dialogs across 12 JS files: iam-nav.js, settings-handler.js, script.js, family-vault-handler.js, vault-export-import.js, dev-toolbar.js, share-link-handler.js, webauthn-handler.js, activity-log-handler.js, breach-monitoring.js, admin-panel.js, cloud-backup-handler.js, hexguard.js, password-strength-enforcer.js, event-handlers.js.
 - Fixed: Rename org button in IAM Members tab now a visible purple pill button instead of invisible pencil icon.
-
-
 ## [6.38.312] — 2026-04-05 — Fix Team Vault UI, rename button, dev mode toggle
 - Fixed: CRITICAL — Team Vault showing old 'MEMBERS / SHARED PASSWORDS' layout instead of new folder sidebar UI. Root cause: enterprise-handler.js was wiring vault-tab[team] click and calling buildTeamView() which overwrote the correct loadTeamTabContent() render. Removed enterprise-handler's team tab click listener entirely — loadTeamTabContent() in script.js is now the sole handler.
 - Fixed: Team Vault Credentials tab tier check was using isPaidTier() (true for all paid) instead of isTeamOrEnt (team or enterprise only).
 - Fixed: Rename org button was a tiny invisible pencil icon — replaced with visible styled pill button.
 - Fixed: enterprise-handler isEnterprise() now includes 'team' tier and org membership check.
 - Fixed: applyTierVisibility() team tab now shows for 'team' tier and org members.
-
-
 ## [6.38.311] — 2026-04-05 — Hide dev mode toggle in production
 - Fixed: Developer Mode toggle in Account settings was visible and clickable in production, firing POST /api/dev/toggle → 403 on every click. The 403 was correct but the UI shouldn't show it.
 - Fixed: wireDevModeToggle() now checks /api/dev/status first — if server returns available:false (production), the Dev Mode section is hidden entirely and the toggle is not wired.
 - Fixed: /api/dev/status now returns {dev_mode:false, available:false} in production instead of just {dev_mode:false}.
 - Fixed: 403 response on dev/toggle now handled gracefully — reverts checkbox, shows info toast, hides section.
-
-
 ## [6.38.309] — 2026-04-05 — Tier gating, team rename, family vault fix
 - Fixed: Team Vault section now shows for any user with an org (hasOrg), not just 'enterprise' tier. Org members invited by admins see the team vault regardless of their own tier.
 - Fixed: Family vault loading personal passwords — switchVault() now has _forceFamilyReload flag that bypasses the early-return guard, ensuring family passwords always reload when clicking the Family nav item.
@@ -10200,25 +8971,17 @@ Audit items confirmed clean (no changes needed):
 - Fixed: Vault Export/Import buttons tagged as data-pro-feature.
 - Fixed: Subscription status text now reflects correct tier label for all 4 tiers.
 - Fixed: Upgrade button hidden on Enterprise tier.
-
-
 ## [6.38.308] — 2026-04-05 — Fix tier gating: dev mode bypass blocked in production
 - Fixed: CRITICAL — dev_status endpoint now returns dev_mode:false in production (FLASK_ENV=production and APP_URL is not localhost). This prevents isDevModeActive being set, which was unlocking all Pro/Enterprise features for any user.
 - Fixed: tier-features.js FEATURES map now includes 'team' tier throughout — team users get Pro features, team-specific features (org_management, audit_log, team_vault, offboarding), but not Enterprise-only features (SSO, custom_policies, compliance_report).
 - Fixed: isPaidTier fallback in hasFeature() tightened — no longer grants Enterprise-only features to pro/team users via the fallback path.
 - Note: On your local dev instance (192.168.1.x or localhost) dev mode still works normally. In production hexvault.co.uk it will always return false.
-
-
 ## [6.38.307] — 2026-04-05 — Fix TOTP replay column crash on login
 - Fixed: CRITICAL — login returning 500 because last_totp_at/last_totp_code columns didn't exist on the running DB. TOTP replay SELECT now wrapped in try/except — missing columns are handled gracefully, replay check skipped rather than crashing.
 - Fixed: Confirmed TOTP replay column migrations (ALTER TABLE ADD COLUMN IF NOT EXISTS) are correctly inside setup_database() and will run on next restart, adding the columns permanently.
 - Note: After deploying this version, restart the container once more to trigger the schema migration and enable full replay protection.
-
-
 ## [6.38.306] — 2026-04-05 — Fix python3-saml version in requirements
 - Fixed: python3-saml pinned to 3.1.0 which does not exist on PyPI. Corrected to 1.16.0 (latest available). Build now succeeds.
-
-
 ## [6.38.305] — 2026-04-05 — SAML 2.0 SSO implementation
 - Added: Full SAML 2.0 SSO implementation using python3-saml library.
 - Added: GET /api/sso/login?org=<slug> — SP-initiated login, redirects to IdP.
@@ -10230,8 +8993,6 @@ Audit items confirmed clean (no changes needed):
 - Rebuilt: SSO admin panel UI — full SAML config form with IdP Entity ID, SSO URL, SLO URL, x509 cert, enable toggle, SP metadata URL display.
 - Fixed: Stale SSO admin JS updated to load/save full SAML config including sso_config JSONB field.
 - Fixed: Broken regex in admin-panel cert cleanup.
-
-
 ## [6.38.304] — 2026-04-05 — Upgrade modal, tier labels, audit routing fixes
 - Fixed: showUpgradeModal now opens the 4-tier pricing modal (Personal £3.99, Pro £6.99, Team £8.99/seat, Enterprise Custom) instead of old dialog.
 - Fixed: Plan CTA buttons in upgrade modal wired — Pro/Personal call upgradeToPro(), Team/Enterprise open mailto links.
@@ -10240,8 +9001,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: Settings modal Upgrade Plan button (#upgradeBtn) now wired to showUpgradeModal.
 - Fixed: require_paid missing 'team' tier — team plan subscribers can now access Pro features.
 - Cleaned: Inline onmouseenter/onmouseleave removed from IAM rename button template — replaced with CSS hover rule.
-
-
 ## [6.38.303] — 2026-04-05 — Bug fixes: team render, tier gating, event delegation
 - Fixed: require_paid missing 'team' tier — team subscribers now pass Pro-gated features.
 - Fixed: Double-render in team vault tab — redundant inline render block removed (renderTeamCreds now the single render path).
@@ -10249,8 +9008,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: Stale copy-team-username delegation in loadTeamTabContent removed (was targeting replaced DOM).
 - Verified: reportlab PDF generation works correctly (1.6KB test output).
 - Verified: All 5 core JS files pass node --check.
-
-
 ## [6.38.302] — 2026-04-05 — Login polish, compliance PDF, CSP hardening
 - Fixed: Auth canvas (#authCryptoCanvas) was hidden via display:none — now enabled with correct z-index and opacity.
 - Polished: Login page particle network updated to brand colours (#6355ff purple, #03030c bg). 65 particles, 180px connection distance.
@@ -10259,8 +9016,6 @@ Audit items confirmed clean (no changes needed):
 - Added: Download Compliance Report button in IAM Audit Log tab (Enterprise tier). Triggers PDF download.
 - Hardened: Removed 9 inline onclick handlers from index.html — replaced with id= attributes wired via JS. Improves CSP posture.
 - Fixed: Inline event handlers now wired via wireInlineHandlers() on page load.
-
-
 ## [6.38.301] — 2026-04-05 — Security audit fixes (batch 2)
 - Fixed: TOTP replay attack — codes rejected if reused within 90s window. last_totp_at/last_totp_code columns added.
 - Fixed: Share link TOCTOU race condition — view count check+increment now atomic via UPDATE...WHERE...RETURNING.
@@ -10269,8 +9024,6 @@ Audit items confirmed clean (no changes needed):
 - Fixed: grace_days in offboarding unvalidated — clamped to 1-90 days.
 - Fixed: log-access endpoint now verifies credential belongs to user's org before writing audit log.
 - Confirmed clean: email enumeration protection, no open redirects, secure notes/share/honeypot/emergency access all enforce user_id ownership, admin auth fully separate.
-
-
 ## [6.38.300] — 2026-04-05 — Design system alignment with landing page
 - Fixed: Root CSS variables now match landing page exactly — primary #6355ff (was #0066FF), background #03030c (was #0A0A0F), text #f5f5ff, muted rgba(245,245,255,.52), accents #00e5a0 emerald / #ffb547 gold / #ff4d6d rose.
 - Fixed: Font switched to IBM Plex Sans + IBM Plex Mono (matches landing page). Removed Inter + Space Grotesk.
@@ -10281,8 +9034,6 @@ Audit items confirmed clean (no changes needed):
 - Polished: Folder sidebar, action buttons, strength badges, breach alert, copy cards, lock button — all aligned to brand palette.
 - Polished: Scrollbar 3px brand purple (matches landing page).
 - Polished: Password avatar colours updated to brand purple family.
-
-
 ## [6.38.299] — 2026-04-05 — Team vault: folders, audit log UI, offboarding UI
 - Added: Folder sidebar in Team Vault credentials tab — shows all org folders with colour dots and credential counts. Click to filter by folder. New Folder button creates inline.
 - Added: Org folder CRUD endpoints: GET/POST /api/org/folders, DELETE /api/org/folders/<id>, PATCH /api/org/passwords/<id>/folder.
@@ -10290,8 +9041,6 @@ Audit items confirmed clean (no changes needed):
 - Added: Audit Log tab in IAM sidebar Team Vault section — shows paginated credential access log (who viewed/copied what and when). Admins only.
 - Updated: Remove Member now calls POST /api/org/offboard/<id> (structured offboarding: deactivates member, revokes org key, 7-day grace period) instead of DELETE.
 - Added: Team Audit Log IAM nav item with document icon.
-
-
 ## [6.38.298] — 2026-04-05 — Feature parity: tier system, audit log, member limits, offboarding
 - Added: require_tier() decorator for backend tier enforcement.
 - Added: log_credential_access() helper — writes to credential_access_log table.
@@ -10302,42 +9051,30 @@ Audit items confirmed clean (no changes needed):
 - Added: window.hasTier(), isTeamTier(), isEnterpriseTier() — frontend tier hierarchy helpers.
 - Fixed: window.isProUser and isPaidTier() now recognise 'team' tier.
 - Updated: Upgrade modal shows correct 4-tier pricing matching landing page.
-
-
 ## [6.38.297] — 2026-04-05 — Upgrade modal: correct 4-tier pricing
 - Rebuilt: Upgrade modal now shows all 4 tiers matching the pricing page — Personal £3.99/mo, Pro £6.99/mo, Team £8.99/seat/mo, Enterprise Custom.
 - Fixed: Old modal showed wrong prices (£5.99 for Pro), wrong tier names, and was missing Team tier entirely.
 - Added: Annual billing savings shown on each card. Trial badge. Correct feature lists per tier matching the landing page.
 - Modal is now 900px wide to fit 4 cards in a row.
-
-
 ## [6.38.296] — 2026-04-05 — Fix family vault (proper early return)
 - Fixed: The actual bug was that switchIamTab() still ran the generic vaultTab.click() before the family-specific code. Since 'family' wasn't in IAM_TAB_MAP it fell back to 'family' as the key, clicked the hidden outer family tab, and triggered that tab's content (family management). The family-specific block ran after but the damage was done.
 - Fixed: Family routing now has an early return at the top of switchIamTab — it sets up passwordsTabContent as active via classList (no click event fired), hides the folder sidebar, calls switchVault('family'), then returns. Generic logic never runs for family.
-
-
 ## [6.38.295] — 2026-04-05 — Fix family vault still showing personal passwords
 - Fixed: Root cause was that IAM family click called pwTab.click() which triggered loadPasswords() for personal passwords. switchVault('family') ran 50ms later via setTimeout but lost the race in some cases.
 - Fixed: IAM family now activates the passwords tab content DIRECTLY (classList manipulation) without calling click(), bypassing the loadPasswords() trigger entirely.
 - Fixed: Folder sidebar is explicitly hidden when switching to family vault.
 - Fixed: switchVault() early-return guard bypassed when _forcePersonalReload flag set, ensuring personal passwords reload correctly when switching back.
-
-
 ## [6.38.294] — 2026-04-05 — Fix Family Vault showing personal passwords
 - Fixed: Clicking 'Family Vault' in IAM sidebar was routing through the outer hidden family tab instead of calling switchVault('family'). This caused personal passwords to remain visible.
 - Fixed: IAM family nav item now switches to the passwords tab first, then calls switchVault('family') after a 50ms delay — loads only family passwords into the list.
 - Fixed: Clicking 'Passwords' in IAM sidebar now calls switchVault('personal') to ensure personal passwords are shown when switching back.
 - Reverted: Removed the My Vault tab hide change from previous version — the tab should always be visible.
-
-
 ## [6.38.293] — 2026-04-05 — Dropdown polish, share modal fix, family tab, org rename
 - Fixed: All select/dropdown elements now use custom styled arrow (no browser default). Dark background with brand colours for focus state.
 - Fixed: Share modal user dropdown now closes when you click away from the search input (onblur with 180ms delay so item clicks fire first).
 - Fixed: Family vault — My Vault tab is now hidden when viewing the Family vault. No longer shows two labels simultaneously.
 - Added: PATCH /api/org/name — org owners and admins can rename their organisation.
 - Added: Org name shown at top of IAM Members tab with edit pencil button for admins. Clicking prompts for new name and updates live.
-
-
 ## [6.38.292] — 2026-04-05 — UI polish: cards, badges, view modal, folder sidebar
 - Polished: Password list cards tighter padding, action buttons hidden until hover, smoother feel.
 - Polished: Strength badges sharper — smaller font, tighter padding, more distinct per-level colours.
@@ -10348,31 +9085,23 @@ Audit items confirmed clean (no changes needed):
 - Polished: Bulk action bar gets glass-morphism background and border.
 - Fixed: Share modal dropdown scrollbar styled to match dark theme.
 - Fixed: Share modal closes cleanly — selection chip and dropdown reset on close.
-
-
 ## [6.38.291] — 2026-04-05 — Share modal: searchable member picker + detail view fixes
 - Redesigned: Share with User modal now has a searchable member picker — type name or email to filter org members, click to select. Selected member shown as a chip with avatar, name, and email. X to deselect.
 - Added: Email fallback field hidden when in an org, shown for sharing with external users.
 - Added: Org members pre-loaded in background when share modal opens.
 - Fixed: Password detail view showed 'Unlock vault to view' even when vault was unlocked. viewPassword() now retries decryption via current vault key if decryptFailed is true.
 - Fixed: 'Unlock vault to view' label renamed to 'Decryption failed' — more accurate for entries that genuinely failed.
-
-
 ## [6.38.290] — 2026-04-04 — Team vault: Share to Team in context menu, bootstrap, key notification
 - Added: Share to Team in right-click/long-press context menu — only shown when org vault key is loaded.
 - Added: No-key warning banner in Team Vault credentials tab — explains to new members that their admin needs to grant access and they need to sign out/in.
 - Added: Add Credential button disabled with tooltip when org vault key not loaded.
 - Added: bootstrapOrgKeys() — runs 3s after vault load for existing org members who predate the ECDH system. Silently generates and registers their ECDH key pair so admin can grant them the org vault key.
 - Added: Toast notification when org vault key is received via key grant — 'Team vault access granted'. Team tab auto-reloads if open.
-
-
 ## [6.38.289] — 2026-04-04 — Fix invite loading stuck + migration resilience
 - Fixed: loadInvite() in join.html now has a 10-second AbortController timeout so it never hangs indefinitely. Previously if the fetch stalled, the spinner spun forever.
 - Fixed: Better error messages — distinguishes between invalid token, already used, expired, server error, and network timeout.
 - Fixed: JSON parse failure in loadInvite now caught explicitly — no longer silently hangs if server returns malformed response.
 - Fixed: GET /api/org/members LEFT JOIN on org_member_keys now has a try/except fallback query (without the join) in case the new table hasn't been created yet on the server. Prevents 500s during rolling deploys.
-
-
 ## [6.38.288] — 2026-04-04 — Team vault: auto-login, edit, bulk share, ECDH registration
 - Fixed: accept_org_invite now creates a server session and returns vault_salt + csrf_token. Both new and existing users are redirected directly to /app after joining — no manual login required.
 - Added: New members register their ECDH public key immediately after joining, so admins can grant the org vault key on next login.
@@ -10383,8 +9112,6 @@ Audit items confirmed clean (no changes needed):
 - Updated: processPendingGrants() updates the badge and auto-grants to any member who has registered their ECDH key.
 - Added: Share to Team button in bulk action bar (shown only when org vault key is loaded).
 - Added: bulkShareToTeam() — re-encrypts all selected passwords with org vault key and pushes to /api/org/passwords.
-
-
 ## [6.38.287] — 2026-04-04 — Team vault: admin controls, key grants, bulk share
 - Added: Make Admin / Remove Admin buttons in IAM Members tab (org admins only).
 - Added: Remove Member button with confirmation — calls existing DELETE /api/org/member/<id>/remove endpoint.
@@ -10394,8 +9121,6 @@ Audit items confirmed clean (no changes needed):
 - Updated: GET /api/org/members now returns has_key and ecdh_public_key per member (LEFT JOIN on org_member_keys).
 - Added: Share to Team button on personal password cards (only shown when user is in an org with vault key loaded).
 - Added: sharePasswordToTeam() — re-encrypts personal password with org vault key and pushes to /api/org/passwords.
-
-
 ## [6.38.286] — 2026-04-04 — Zero-knowledge team vault key infrastructure
 - Added: org_member_keys table — stores each member's ECDH public key, encrypted ECDH private key, and their wrapped copy of the org vault key.
 - Added: org_key_grants table — pending ECDH-encrypted key grants from admins to new members.
@@ -10407,64 +9132,44 @@ Audit items confirmed clean (no changes needed):
 - Updated: processPendingGrants() runs 2s after vault load — admins automatically grant keys to new members.
 - Added: Reveal button on team credential cards — decrypts using orgVaultKey (key_version 3) or falls back to personal key for legacy entries.
 - Added: Auto-hide revealed password after 30 seconds.
-
-
 ## [6.38.285] — 2026-04-04 — Fix security dashboard crash on empty vault
 - Fixed: renderAgeChart crashed with 'data is undefined' because the zero-state analytics object was missing password_ages. The object also had wrong keys for strength_distribution (veryStrong instead of very_strong).
 - Fixed: Both fields now match the exact shapes used by calculateAnalytics and expected by the chart renderers.
 - Added: Defensive fallbacks in renderStrengthChart and renderAgeChart so a missing or malformed field never crashes the whole dashboard.
-
-
 ## [6.38.284] — 2026-04-04 — Security dashboard shows with zero passwords
 - Changed: Dashboard no longer blocks with 'No passwords yet' when vault is empty. Instead renders with all-zero stats (score 100, all counts 0) so the product communicates its value from first login.
 - Fixed: Empty state object now uses security_score (not score) to match what renderSecurityDashboard expects, avoiding a silent render failure.
 - Fixed: strength_distribution in empty state is a full object instead of {} so the doughnut chart renders without errors.
-
-
 ## [6.38.283] — 2026-04-04 — Security dashboard: robust fallback when window.passwords is empty
 - Fixed: Dashboard showed 'No passwords yet' even when vault had entries. The root cause: window.passwords was empty when the dashboard opened (timing race or silent decrypt failure), the fallback fetch ran but decryptPasswordValue failed silently, and memPasswords stayed empty.
 - Improved: Fallback now tries both window.decryptPasswordValue and window.decryptPassword. Per-entry decrypt errors are caught individually (one failure no longer aborts the whole batch). Successfully decrypted entries update window.passwords for future opens. Fetch errors are logged rather than silently swallowed.
-
-
 ## [6.38.282] — 2026-04-04 — Security dashboard now reflects live password changes
 - Fixed: Security dashboard showed stale analytics after adding/editing/deleting passwords unless the user logged out and back in. The dashboard cached window.securityAnalytics from the last calculation and reused it on open.
 - Fix: window.securityAnalytics is now set to null every time loadPasswords() updates window.passwords. This forces a fresh calculation the next time the dashboard is opened via openEnhancedSecurityDashboard() → loadSecurityAnalytics().
 - The existing live refresh (when dashboard is already open during a save) continues to work as before.
-
-
 ## [6.38.281] — 2026-04-04 — Fix Members tab 403: open member list to all org members
 - Fixed: GET /api/org/members returned 403 for non-admin org members including the org owner in some cases. Viewing the member list is appropriate for all team members — managing members (remove/promote) is correctly restricted to admins.
 - Changed: Auth check now only verifies the requester is actually a member of the org, not that they are an admin.
 - Added: caller_is_admin flag in the response so the frontend knows whether to show management controls.
 - Updated: loadTeamMembers() in iam-nav.js uses caller_is_admin from the response instead of inferring from 403 status.
-
-
 ## [6.38.280] — 2026-04-04 — Fix 2FA verify 400 on empty code submission
 - Fixed: verifyTwoFactorForm was submitting with an empty code, likely triggered by browser autocomplete or a touch event on modal open. Added explicit guard — if code is empty or <6 digits, shows toast and returns early without hitting the API.
 - Added: Double-submit prevention using form.dataset.submitting flag, reset in finally block.
 - Added: Auto-submit when exactly 6 digits are entered in the verifyCode input — standard 2FA UX, users no longer need to press Enter or click Enable 2FA.
 - Added: verifyCode is cleared on modal open to prevent stale values from triggering premature submission.
 - Added: Input handler strips non-digits from verifyCode field.
-
-
 ## [6.38.279] — 2026-04-04 — Fix SyntaxError: apostrophe in single-quoted string
 - Fixed: app.py line 3966/3969 — 'don't' inside single-quoted string caused SyntaxError: unterminated string literal. Gunicorn refused to start. Error messages simplified to avoid the apostrophe.
-
-
 ## [6.38.278] — 2026-04-04 — Join page: Don't have an account escape hatch
 - Added: 'Don't have an account? Create one instead' link on the existing-user flow. Clicking it switches to the new user form (username + password + confirm + strength meter).
 - Added: force_new_account flag sent to backend when user explicitly switches to new account creation.
 - Backend: When force_new_account=true, existing user record is ignored and a fresh account is created. Handles stale or partial registrations.
 - Improved error message on wrong password to hint at the escape hatch.
-
-
 ## [6.38.277] — 2026-04-04 — Join page: security fix + better existing user UX
 - Security fix: accept_org_invite for existing users never verified their password — anyone with an invite link could silently add any existing user to an org. Now verifies the submitted password against the stored hash before joining.
 - UX: Existing user info box now explains clearly that they already have an account and just need their master password to confirm.
 - UX: Button changed from 'Accept & Sign In' to 'Accept & Join Team'.
 - UX: Added 'Not you?' message showing the invited email address at the bottom.
-
-
 ## [6.38.276] — 2026-04-04 — Team Vault: add/delete shared credentials
 - Added: POST /api/org/passwords — create a team credential. Client encrypts using the same AES-256-GCM encryptPassword() function before sending. Zero-knowledge: server never sees plaintext.
 - Added: GET /api/org/passwords — list active team credentials from org_passwords table (replaces legacy org_shared_passwords query).
@@ -10473,67 +9178,47 @@ Audit items confirmed clean (no changes needed):
 - Added: Delete button on each team credential card.
 - Updated: Legacy GET /api/org/team-passwords now delegates to get_org_passwords().
 - Added: addTeamCredModal to click-outside-to-close list.
-
-
 ## [6.38.275] — 2026-04-04 — Email audit: remove emojis, fix hardcoded URLs
 - Removed: Emojis from email subjects (breach alert '⚠️', expiry reminder '⚠️') — replaced with plain text 'ALERT:'.
 - Fixed: send_verification_email and send_verification_reminder_email had hardcoded https://hexvault.co.uk/verify-email URLs instead of using APP_URL env var.
 - Fixed: send_breach_alert_email and send_password_expiry_reminder had hardcoded https://hexvault.co.uk in buttons and text — now use APP_URL.
 - Fixed: send_mpa_notification had hardcoded https://hexvault.co.uk/admin — now uses APP_URL.
 - All 18 email functions audited — no other issues found.
-
-
 ## [6.38.274] — 2026-04-04 — Join page: password show/hide + confirm + strength meter
 - Added: Show/hide toggle on the password field for existing users accepting an invite.
 - Added: Show/hide toggles on both password fields for new users creating an account.
 - Added: Confirm password field for new users — submit blocked if passwords do not match.
 - Added: Password strength meter (Weak/Fair/Good/Strong/Very strong) shown as a colour-coded bar below the password field for new users.
 - Validation: passwords must match before form submission is allowed.
-
-
 ## [6.38.273] — 2026-04-04 — Fix invalid invitation error + remove all emojis
 - Fixed: /api/org/invite-info/<token> was doing a JOIN between org_invitations and organisations. If any column was missing or the JOIN failed silently, it returned 'Invalid invitation' even for valid tokens. Rewritten to use two separate queries with explicit error logging — token lookup first, then org lookup.
 - Fixed: inv dict was being passed through row_to_dict() unnecessarily since it's already a plain dict after the rewrite. Simplified.
 - Removed: All emojis from admin-panel.js (notification icons, 2FA status), join.html (lock icon replaced with SVG), admin.html (language/theme/honeypot icons replaced with text labels).
-
-
 ## [6.38.272] — 2026-04-04 — Fix invite link going to landing page instead of join form
 - Fixed: /join/<token> was using send_file() with a multi-path search that silently fell through to redirect(f'/app?invite=token') when join.html wasn't found at the searched paths. In the Docker container, the file path resolution differed from local, so join.html was never found.
 - Fix: Rewritten to use the same os.path.dirname(os.path.abspath(__file__)) pattern as _serve_html() which works correctly in Docker. Returns 404 with a helpful message if file truly missing instead of silently redirecting.
-
-
 ## [6.38.271] — 2026-04-04 — Settings data tab loads billing, org creation updates IAM nav
 - Fixed: Settings → Data tab never called loadBillingStatus() — billing and subscription info showed stale data. Now calls loadBillingStatus() when Data tab is opened.
 - Fixed: Settings → Account tab now also calls loadBillingStatus() so subscription tier is always current.
 - Fixed: After org creation, currentUserOrgId is now set from the API response and updateIamNav() is called — Team Vault section in IAM sidebar appears immediately without needing a page reload.
 - Fixed: After org creation, currentUserIsOrgAdmin is set to true so Invite Members section shows immediately.
-
-
 ## [6.38.270] — 2026-04-04 — Fix invite input layout + profile picture remove button
 - Fixed: Invite Member email input was rendering as a tiny grey box. The flex layout with flex:1 on the input was being crushed by the button. Changed to vertical stacked layout — input full width, button below.
 - Fixed: Remove Photo button in Settings → Account → Profile Picture was permanently hidden (display:none). loadSettingsProfilePicture() now shows the button when a profile picture is set, hides it when showing initials.
-
-
 ## [6.38.269] — 2026-04-04 — Fix Settings Team tab never showing org info
 - Fixed: loadTeamSettingsTab() checked d.org && d.org.name but /api/org/info returns { has_org, name, is_admin, is_owner } — no nested org object. Tab always fell through to 'no organisation' state regardless of actual membership.
 - Fixed: Role label now correctly derived from is_owner/is_admin flags.
 - Fixed: Invite section visibility now based on is_admin/is_owner booleans from API, not a stale d.role string.
-
-
 ## [6.38.268] — 2026-04-04 — Admin portal approvals fixed, MPA policies stub improved
 - Added: GET /api/admin/approvals endpoint with @require_admin_auth — admin portal can now fetch pending MPA actions for the org without needing a vault session.
 - Fixed: loadApprovals() now calls /api/admin/approvals and renders pending actions with approval progress bars and expiry info. Badge count shown in sidebar nav.
 - Fixed: loadMpaPolicies() now renders a helpful message instead of being an empty stub.
 - All four areas audited: Team Vault credentials (v267), Members tab (v267), Admin portal (this release), Join page (confirmed working in v267).
-
-
 ## [6.38.267] — 2026-04-04 — Team Vault, Members tab, admin portal stub fixes
 - Fixed: Team Vault tab always showed upgrade prompt regardless of org membership. Now checks currentUserOrgId and isPaidTier — enterprise org members see real credentials from /api/org/team-passwords, with an Add Credential button.
 - Added: Members tab in IAM sidebar now loads and renders org members list (names, emails, roles, pending invites) via /api/org/members. Non-admins see a polite access-denied message instead of an error.
 - Fixed: admin-panel.js called loadApprovals(), loadMpaPolicies(), loadIpAllowlist(), loadCanaryReport(), loadSsoConfig() which were undefined — causing ReferenceErrors that broke the admin portal init. Added all five as proper implementations or graceful stubs.
 - Join page (join.html): no changes needed — already fully functional.
-
-
 ## [6.38.266] — 2026-04-04 — Fix all invite 500s: ON CONFLICT (email) on non-unique column
 - Fixed: org_invitations table has no UNIQUE constraint on email — only on token. All three invite endpoints used ON CONFLICT (email) which PostgreSQL rejects with an error.
   - send_org_invite: ON CONFLICT (email) DO UPDATE
@@ -10541,17 +9226,11 @@ Audit items confirmed clean (no changes needed):
   - invite_member: ON CONFLICT DO NOTHING (also broken)
 - Fix: replaced ON CONFLICT with DELETE existing pending invite then INSERT fresh. Cleaner and correct.
 - Also fixed in v265: inv_email NameError in send_org_invite push_admin_notification call.
-
-
 ## [6.38.265] — 2026-04-04 — Fix org invite 500: NameError inv_email
 - Fixed: POST /api/org/invite returning 500. The push_admin_notification call referenced inv_email which was never defined — should have been email. Instant NameError on every invite attempt.
-
-
 ## [6.38.264] — 2026-04-04 — Fix Emergency Access and Stored Passkeys stuck on Loading
 - Fixed: Settings → Security tab showed 'Loading...' permanently for Emergency Access and Stored Passkeys. loadSettingsForTab('security') never called loadEmergencyAccess() or loadStoredPasskeys() — both functions existed and were exposed on window but were never triggered.
 - Fixed: Removed hardcoded 'Loading...' from both containers in HTML — they now start empty and are populated when the tab is opened.
-
-
 ## [6.38.263] — 2026-04-04 — Admin portal setup via one-time email link
 - Added: When an org is created, a one-time setup email is sent to the owner with a link to set a dedicated admin password. The link expires in 24 hours.
 - Added: GET /admin/setup/<token> — serves a clean setup form for the org owner to create their admin password.
@@ -10560,26 +9239,18 @@ Audit items confirmed clean (no changes needed):
 - Removed: The code that copied the vault password hash into admin_users (was a security risk).
 - Security: Admin password is completely separate from vault password, minimum 12 characters, bcrypt hashed.
 - Added send_admin_setup_email() to email_service.py.
-
-
 ## [6.38.262] — 2026-04-04 — Admin portal access: auto-provision org owner, fix security issues
 - Removed: Admin Portal link from IAM sidebar. The portal is a separate authenticated context accessed directly at /admin/<slug> — not linked from inside the employee vault.
 - Fixed: Org owners had no admin_users record after creating an org, so they could never log into their own admin portal. Now automatically creates an admin_users record (role: org_admin) for the org owner on org creation, using the same email/password hash.
 - Security fix: Hardcoded super-admin password replaced with ADMIN_PASSWORD env variable. Logs a warning if not set. Add ADMIN_PASSWORD to your .env file.
-
-
 ## [6.38.261] — 2026-04-04 — Settings tabs now reload data on click
 - Fixed: Clicking a settings tab (e.g. Team) didn't call loadSettingsForTab() — only openSettingsModal() did. So switching from Account to Team showed stale/empty org data. Now every settings tab click triggers loadSettingsForTab(target) with a 50ms debounce.
 - Result: Settings → Team tab always shows current org membership, role and invite section when clicked.
-
-
 ## [6.38.260] — 2026-04-04 — Settings Team tab cleanup + click-outside fixes
 - Fixed: trashModal was missing from modal-click-outside.js — clicking outside the recycle bin modal didn't close it.
 - Reworked: Settings → Team tab is now the org management panel. Shows org info, Create Organisation (enterprise no-org), Invite Members (admins/owners only with inline email form), Team Vault status.
 - Added: Inline invite button in Settings → Team wired to /api/org/invite. Shows success/error inline, no modal needed.
 - Invite section only shown to org admins and owners, not regular members.
-
-
 ## [6.38.259] — 2026-04-04 — IAM sidebar navigation: My Vault vs Team Vault
 - Added: Left sidebar nav (iam-nav.js + CSS) replacing the flat horizontal vault tabs. Clear visual separation between My Vault (Passwords, Secure Notes, Shared With Me) and Team Vault (Credentials, Members, Admin Portal).
 - Team Vault section only visible to enterprise users in an org. Family section only visible to family plan users.
@@ -10589,92 +9260,62 @@ Audit items confirmed clean (no changes needed):
 - Folder sidebar hides when not on Passwords tab (not relevant for notes/team views).
 - Backend: get_profile now returns org_role and is_org_admin so the client knows whether to show the Admin Portal link.
 - No changes to encryption, session handling, or security logic.
-
-
 ## [6.38.258] — 2026-04-04 — Work email auto-join: domain matching on registration and login
 - Fixed: allowed_domains was being stored as a plain string instead of a PostgreSQL TEXT[] array. check_domain_org uses ANY(allowed_domains) which requires an array — domain matching was silently failing.
 - Fixed: domains are now parsed from comma-separated string into a proper array on org creation.
 - Added: Slug uniqueness check on org creation — appends random suffix if slug already taken.
 - Added: Domain auto-join check on login as well as registration. Users who registered before an org set up their domain, or who already had an account, now auto-join on next login.
 - Result: Any user signing up or logging in with @acme.com automatically joins the Acme org if acme.com is in their allowed_domains.
-
-
 ## [6.38.257] — 2026-04-04 — Self-service org creation for enterprise users
 - Restored: Enterprise users can create their own organisation in Settings → Team. The org owner then invites managers, who invite team members — no HexVault intervention needed.
 - Simplified: Removed manual slug field from org creation modal. Slug is now auto-generated from the org name on the client.
 - Simplified: Company domain field label clarified — one domain, not comma-separated list shown by default.
 - UX: Create Organisation section hidden once user is already in an org. Shown only for enterprise users without an org.
-
-
 ## [6.38.256] — 2026-04-04 — Remove self-service org creation; admin provisions orgs
 - Removed: 'Create Organisation' button and section from Settings → Team tab. Organisations are now provisioned by HexVault admin only — correct enterprise SaaS model.
 - Updated: Enterprise users without an org now see a message directing them to enterprise@hexvault.co.uk.
 - Updated: Team tab states are now: (1) in org = show org info + vault active, (2) enterprise no org = contact us message, (3) personal/pro = upgrade prompt.
 - Kept: createOrgModal and submitCreateOrganisation for use by admin panel.
-
-
 ## [6.38.255] — 2026-04-04 — Fix Team tab not refreshing after org creation, Team Vault always showing upgrade
 - Fixed: After creating an org, the Team tab still showed 'You are not part of any organisation' — success handler called loadProfile() which doesn't exist. Now calls loadSettingsForTab('team') and immediately updates currentUserTier and isProUser.
 - Fixed: Team Vault section was hardcoded HTML always showing 'Upgrade to Enterprise'. loadTeamSettingsTab() now dynamically renders the vault area based on enterprise status and org membership: shows active status if in org, 'create org first' prompt for enterprise without org, upgrade prompt for non-enterprise.
 - Fixed: Create Organisation button now hidden for non-enterprise users in the team tab.
-
-
 ## [6.38.254] — 2026-04-04 — Org create: enterprise only, remove trial/business gate
 - Simplified: org creation now requires enterprise tier only. Removed business and trial exceptions — HexVault has no enterprise/business trial tier. Error message updated to 'Enterprise subscription required'.
-
-
 ## [6.38.253] — 2026-04-04 — Tighten org create tier gate to enterprise/business only
 - Reverted: pro/trial were incorrectly added to eligible tiers for org creation in v252. Only enterprise and business subscribers (or those on an active enterprise/business trial) can create organisations.
-
-
 ## [6.38.252] — 2026-04-04 — Fix org/create 500: missing request body parsing
 - Fixed: POST /api/org/create returning 500. The endpoint used org_name, slug and domains variables that were never read from request.json — causing an immediate NameError.
 - Fixed: Added input validation (name required, slug format check).
 - Fixed: Tier gate only allowed 'enterprise' and 'business' — excluded 'pro' and 'trial'. Trial users with active trial_ends_at can now create organisations.
-
-
 ## [6.38.251] — 2026-04-04 — Fix security dashboard blocked for trial users
 - Fixed: Security dashboard (and all data-pro-feature buttons) were locked for trial users. updateProButtonVisuals() ran synchronously before the async /api/profile fetch resolved, so window.currentUserTier was still undefined and isPaidTier() returned false — showing the upgrade modal on click.
 - Fix: Extracted updateProButtonVisuals() as a named function and call it again after the profile fetch sets currentUserTier and isProUser. Trial users now correctly see unlocked pro features.
 - Also added 'Personal Plan (Trial)' label for trial tier in the settings subscription display.
-
-
 ## [6.38.250] — 2026-04-04 — Fix 2FA verify 400: session gap between setup and verify
 - Fixed: POST /api/2fa/verify returning 400 'No pending 2FA setup'. The TOTP secret was stored in the Flask session by setup_2fa() but lost before verify_2fa_setup() could read it — common on mobile browsers where the updated session cookie isn't reliably sent on the next request after a modal DOM move.
 - Fix: Client now stores data.secret from the setup response in pendingTotpSecret and sends it alongside the code in the verify request body. Backend uses session secret first, falls back to the client-provided secret. Eliminates the session dependency for this flow.
 - Also fixed: email_unverified 403 was showing wrong error message — moved the check before the generic 403 handler that was returning early.
 - Also fixed: authAlert moved above submit button so it's always visible on mobile.
-
-
 ## [6.38.249] — 2026-04-03 — Fix email verification message never shown on login
 - Fixed: The email_unverified check was positioned AFTER the generic 403 handler in the login response flow. The 403 handler returned early with 'Session error' before email_unverified was ever checked — so users trying to log in with an unverified account always saw the wrong error message.
 - Fixed: Moved email_unverified check to run before the 403 handler.
 - Fixed: Moved authAlert div above the submit button so it's always visible on mobile (was below the fold at the bottom of the form).
-
-
 ## [6.38.248] — 2026-04-03 — Reduce duplicate /api/profile calls on page load
 - Fixed: dev-toolbar was calling /api/profile twice per init — once in refreshDevTier() and once in loadDevTabState(). Merged into a single _refreshDevProfile() function.
 - Fixed: initDevToolbar was called twice on DOMContentLoaded (1500ms and 4000ms retries). Removed the 4000ms unconditional retry — showVault() already calls initDevToolbar directly after login.
 - Result: /api/profile calls reduced from 4 to 1 per page load for dev users.
-
-
 ## [6.38.247] — 2026-04-03 — Fix email verification broken by token invalidation on login
 - Fixed: Every failed login attempt (email unverified) was calling UPDATE email_verification_tokens SET used=TRUE, invalidating any previously sent link. User would click the link from their inbox and get 400 'Invalid or expired' because it had been marked used by a subsequent login attempt.
 - Fix: Only generate and send a new token if no valid (unused, unexpired) token already exists. Existing tokens are never invalidated on login — only on successful verification.
 - Updated login error message to mention spam folder.
-
-
 ## [6.38.246] — 2026-04-03 — Header badge shows email instead of username
 - Fixed: Header badge was showing username ('test123') instead of email address. The || fallback treated empty string as falsy correctly, but the login response email field was not always populated. Added explicit trim() check. Also fixed: updating username no longer overwrites the header if email is already displayed.
-
-
 ## [6.38.245] — 2026-04-03 — Deep bug audit: share modal completely broken, various fixes
 - Fixed: Share password modal was completely broken — HTML field was shareUsername but JS read shareEmail (null = throws); permission was a <select> but JS queried a radio input; permission values were 'read'/'write' in HTML but API requires 'view'/'edit'. All three mismatches fixed.
 - Fixed: sharePassword() now reads sharePermission as a <select> and adds null guard on email input.
 - Audited 200+ getElementById references across all JS files — confirmed remainder are either dynamically created, guarded with if()/?., or on separate pages (landing, share-view, status).
 - Confirmed row_to_dict PostgreSQL behaviour returns full dict — is_favourite/is_honeypot/custom_fields/expires_at all correctly returned to client.
-
-
 ## [6.38.244] — 2026-04-03 — Bug audit: dead code, broken IDs, missing form handlers
 - Fixed: userBadgeBtn had duplicate id attribute (id="userBadgeBtn" + id="openSettingsBtn") — second ID was ignored by browser, removed.
 - Fixed: forgotPasswordLink ID mismatch — element in HTML is forgotPasswordBtn. All 4 references in script.js corrected.
@@ -10682,48 +9323,28 @@ Audit items confirmed clean (no changes needed):
 - Fixed: updateUsernameFormSettings and updateEmailFormSettings in settings modal had no submit handlers — username/email update was silently broken. Handlers added to script.js DOMContentLoaded.
 - Fixed: load2FAStatus() was updating non-existent profileModal elements. Now updates settings2FABadge in the actual settings modal.
 - Removed: Dead openProfile(), closeProfile() functions and their ~150-line DOMContentLoaded wiring block — profileModal was never in the HTML. Settings modal is the correct profile UI.
-
-
 ## [6.38.243] — 2026-04-03 — Fix backupCodesModal also trapped in hidden vaultContainer
 - Fixed: backupCodesModal is also inside vaultContainer (display:none during forced 2FA setup), so it was invisible after completing setup. Applied same document.body.appendChild() fix as setupTwoFactorModal in showBackupCodes().
 - Result: after forced 2FA setup, both the backup codes modal and subsequent vault load now work correctly.
-
-
 ## [6.38.242] — 2026-04-03 — Fix security analytics 500 + dev toolbar missing after forced 2FA
 - Fixed: POST /api/security/analytics returning 500 — analyze_password_strength() and calculate_security_score() were called but never defined. Both functions added above the analytics route.
 - Fixed: Dev toolbar not showing after forced 2FA setup. forcedSetupMode was reset to false on verify success before backup codes modal closed, so closeBackupCodesConfirmBtn entered the wrong branch and never called showVault(). Now forcedSetupMode stays true until the confirm button dismisses backup codes.
-
-
 ## [6.38.241] — 2026-04-03 — Exempt verify_2fa_setup and setup_2fa from CSRF check
 - Fixed: POST /api/2fa/verify returning 400 'CSRF token invalid' during first-time setup flow. The CSRF token issued at login is valid but something in the session lifecycle causes a mismatch by verify time. Both setup_2fa and verify_2fa_setup are now CSRF-exempt — they already require a valid session (require_auth) and a correct TOTP code, making CSRF protection redundant.
-
-
 ## [6.38.240] — 2026-04-03 — Restore missing setupTwoFactorModal HTML
 - Fixed: setupTwoFactorModal was accidentally deleted from index.html during v239 edits, causing TypeError: setupModal is null. Modal restored before backupCodesModal. JS fix from v239 (appendChild to body) retained.
-
-
 ## [6.38.239] — 2026-04-03 — ROOT CAUSE FIX: 2FA modal inside display:none vaultContainer
 - Fixed: setupTwoFactorModal was nested inside vaultContainer (display:none during forced 2FA setup). A display:none ancestor collapses all descendants to zero dimensions regardless of their own styles — confirmed via getBoundingClientRect returning {width:0,height:0} and offsetParent:undefined. Fix: document.body.appendChild(setupModal) before showing it, escaping the hidden parent chain.
 - All previous timing/animation fixes (v235-v238) were treating symptoms. This was always the root cause.
-
-
 ## [6.38.238] — 2026-04-03 — Fix 2FA modal invisible on mobile Safari
 - Fixed: Inner .modal div gets stuck at opacity:0 on mobile Safari due to CSS slideUp animation with forwards fill mode. Now forces opacity:1, transform:none, animation:none via inline style immediately after the active class is added — overrides the animation entirely, guaranteeing the modal content is always visible.
-
-
 ## [6.38.237] — 2026-04-03 — QR code: offscreen canvas render fix
 - Fixed: Replaced in-DOM canvas with offscreen canvas->img approach. QRious now renders into a detached canvas element (no layout dependency), converts to PNG data URL, and sets it as an img src. Eliminates all timing/animation/display issues permanently.
 - Removed canvas element from 2FA setup modal HTML, replaced with img tag.
-
-
 ## [6.38.236] — 2026-04-03 — Fix blank QR code on first-time 2FA setup (take 2)
 - Fixed: QR still blank after v235. Root cause: QRious ran before the slideUp animation (0.3s) completed, reading offsetWidth/offsetHeight as 0. Now waits for animationend on the inner modal, with 350ms fallback.
-
-
 ## [6.38.235] — 2026-04-03 — Fix blank QR code (attempt 1)
 - Fixed: QR code not rendering on first login forced-2FA flow. Replaced blind 100ms timeout with double `requestAnimationFrame` to guarantee the modal has fully painted before drawing to the canvas.
-
-
 ## [6.38.149] — 2026-04-01
 
 ### Session summary: 6.38.140 → 6.38.149
@@ -10761,8 +9382,6 @@ Audit items confirmed clean (no changes needed):
 - Login spinner: resetBtn() now called on ALL return paths including success.
 
 ---
-
-
 ## [6.38.140] — 2026-04-01
 
 ### Session summary: 6.38.128 → 6.38.140
@@ -10810,8 +9429,6 @@ Audit items confirmed clean (no changes needed):
   .family-member-row, .family-invite-slot-hover) — no more inline hover handlers.
 
 ---
-
-
 ## [6.38.127] — 2026-04-01
 
 ### Session summary: 6.38.106 → 6.38.127
@@ -10852,8 +9469,6 @@ Audit items confirmed clean (no changes needed):
 - Header shows email address instead of username.
 
 ---
-
-
 ## [6.38.105] — 2026-03-31
 
 ### Fix: Secure Notes blank: hardcoded display:block in tab switcher
@@ -10877,8 +9492,6 @@ Transient 500s on shared-with-me and activity-log at startup:
 - Not a code bug, just startup timing
 
 ---
-
-
 ## [6.38.104] — 2026-03-31
 
 ### Fix: Secure Notes tab blank (proper fix), folder counts live update
@@ -10905,8 +9518,6 @@ shared-with-me 500:
 For shared-with-me fix, full rebuild still needed:
 
 ---
-
-
 ## [6.38.103] — 2026-03-31
 
 ### Fix: Folder counts stale after delete, Secure Notes still blank
@@ -10935,8 +9546,6 @@ Secure Notes tab will now show the vault-header with "Add Note" button
 and the empty state with "Add your first note" when no notes exist.
 
 ---
-
-
 ## [6.38.102] — 2026-03-31
 
 ### Fix: Secure Notes tab showing blank content area
@@ -10959,8 +9568,6 @@ Secure Notes tab will now show:
 - Note list when notes have been added
 
 ---
-
-
 ## [6.38.101] — 2026-03-31
 
 ### Fix: Delete null firing from context menu, activity log double request
@@ -10981,8 +9588,6 @@ Activity log double request (500 then 402):
   The capture-phase handler already handles it correctly with the tier check
 
 ---
-
-
 ## [6.38.100] — 2026-03-31
 
 ### Fix: DELETE /api/passwords/null
@@ -10999,8 +9604,6 @@ deletePassword() called with currentPasswordId = null:
   immediately on success rather than waiting for passwords to reload
 
 ---
-
-
 ## [6.38.99] — 2026-03-31
 
 ### Fix: Load loop, settings 404, passkeys 500, save 502 timeout
@@ -11030,8 +9633,6 @@ PUT /api/passwords 502 Bad Gateway after ~2 minutes:
   respond in 5s, breach check is skipped and save proceeds normally
 
 ---
-
-
 ## [6.38.97] — 2026-03-31
 
 ### Fix: Security dashboard crash on load
@@ -11047,8 +9648,6 @@ TypeError: can't access property "textContent", getElementById(...) is null:
 - Dashboard now loads without crashing even if any stat element is missing
 
 ---
-
-
 ## [6.38.96] — 2026-03-31
 
 ### Feature: Breach warnings now show a modal and create persistent notifications
@@ -11080,8 +9679,6 @@ Modal design:
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.95] — 2026-03-31
 
 ### Fix: /api/profile 404, /api/passwords/shared-with-me 500
@@ -11107,8 +9704,6 @@ Both fixes are safe fallbacks — they degrade gracefully until the full
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.94] — 2026-03-31
 
 ### Fix: Folder counts not updating, custom styled folder dropdown
@@ -11136,8 +9731,6 @@ Custom folder dropdown:
 - Hidden input id="itemFolder" preserves all existing save logic unchanged
 
 ---
-
-
 ## [6.38.92] — 2026-03-31
 
 ### Fix: Left panel text invisible in light mode
@@ -11160,8 +9753,6 @@ background stays dark in both themes:
 - .auth-trust-title/desc, .auth-score-*, .auth-df-* all explicitly white
 
 ---
-
-
 ## [6.38.91] — 2026-03-31
 
 ### Fix: Light mode text unreadable, dark mode labels too faint
@@ -11190,8 +9781,6 @@ Dark mode readability improvements:
 - auth-flabel raised from 25% to 45% opacity white
 
 ---
-
-
 ## [6.38.90] — 2026-03-31
 
 ### Fix: Login page dark mode text invisible, light/dark theme restored
@@ -11217,8 +9806,6 @@ Light/dark theme:
 - Dark mode unchanged — everything still uses rgba(255,255,255,x) text on dark
 
 ---
-
-
 ## [6.38.89] — 2026-03-31
 
 ### Fix: Login page text invisible, white panel, mouse glow missing
@@ -11248,8 +9835,6 @@ Mouse glow not showing:
 - Fades out on mouseleave and after 2.5s idle — no ghost glow
 
 ---
-
-
 ## [6.38.88] — 2026-03-31
 
 ### Fix: Mouse glow, light/dark theme support, text readability
@@ -11277,8 +9862,6 @@ Text readability:
 - Both were borderline unreadable on the dark background
 
 ---
-
-
 ## [6.38.87] — 2026-03-31
 
 ### Change: Login background simplified
@@ -11296,8 +9879,6 @@ Left panel background stripped back:
   everything else is clean dark space that lets the text breathe
 
 ---
-
-
 ## [6.38.86] — 2026-03-30
 
 ### Fix: 2FA debug trace removed, onboarding 500 hardened, rebuild note
@@ -11326,8 +9907,6 @@ After rebuild, startup logs should show:
   [INFO] Password shares table ready
 
 ---
-
-
 ## [6.38.85] — 2026-03-30
 
 ### Change: Auth left panel grid replaced with crypto stream animation
@@ -11349,8 +9928,6 @@ CSP compliant: all code in auth-animations.js external file.
 Responsive: canvas resizes on window resize with 200ms debounce.
 
 ---
-
-
 ## [6.38.84] — 2026-03-30
 
 ### Redesign: Premium login page with full animations
@@ -11392,8 +9969,6 @@ Responsive: stacks vertically at 900px, score/pipeline hidden on mobile
 All existing JS IDs preserved — no script.js changes needed.
 
 ---
-
-
 ## [6.38.83] — 2026-03-30
 
 ### Fix: CSP violation from onclick attributes, tab switching rewired
@@ -11417,8 +9992,6 @@ This approach is fully CSP-compliant: all JS is in external files,
 no inline event handlers anywhere.
 
 ---
-
-
 ## [6.38.82] — 2026-03-30
 
 ### Redesign: Login page split-panel layout
@@ -11450,8 +10023,6 @@ All JS IDs preserved — login, register, biometric, 2FA, password toggle
 all work without any JS changes.
 
 ---
-
-
 ## [6.38.81] — 2026-03-30
 
 ### Fix: Biometric modal z-index, WebAuthn rp.id insecure error
@@ -11476,8 +10047,6 @@ Device name prompt appearing behind settings modal:
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.80] — 2026-03-30
 
 ### Fix: Secure Notes tab switching, select dropdown styling
@@ -11508,8 +10077,6 @@ Folder counts note:
 - Edit passwords and change their folder to reassign them
 
 ---
-
-
 ## [6.38.79] — 2026-03-30
 
 ### Fix: Biometric/WebAuthn registration and authentication
@@ -11539,8 +10106,6 @@ Authentication flow same fixes:
 Requires full rebuild (app.py + biometric-auth.js changed):
 
 ---
-
-
 ## [6.38.78] — 2026-03-30
 
 ### Fix: Folder filtering root cause, dropdown styling, secure notes
@@ -11571,8 +10136,6 @@ Secure notes:
 Requires full rebuild (app.py + JS + CSS changed):
 
 ---
-
-
 ## [6.38.77] — 2026-03-30
 
 ### Fix: Folder filtering, secure notes 500, shared passwords 500
@@ -11601,8 +10164,6 @@ After rebuild, watch startup logs for:
   [INFO] Password shares table ready
 
 ---
-
-
 ## [6.38.76] — 2026-03-30
 
 ### Fix: Secure notes 500 errors, RealDictCursor bugs, activity-log 500
@@ -11629,8 +10190,6 @@ Activity-log / onboarding 500:
 Requires full rebuild:
 
 ---
-
-
 ## [6.38.75] — 2026-03-30
 
 ### Fix: Contact form wrapper in app.py had old 4-arg signature
@@ -11646,8 +10205,6 @@ message, organisation='') and now passes organisation through to email_service.
 Requires full rebuild:
 
 ---
-
-
 ## [6.38.73] — 2026-03-30
 
 ### Fix: Contact form email delivery via Postmark
@@ -11672,8 +10229,6 @@ email_service.py send_contact_email():
 Requires full rebuild (app.py + email_service.py changed):
 
 ---
-
-
 ## [6.38.72] — 2026-03-30
 
 ### Fix: Contact card display names, success state layout
@@ -11691,8 +10246,6 @@ Success state layout fixed:
 - Padding tightened from 40px/20px to 32px/24px
 
 ---
-
-
 ## [6.38.71] — 2026-03-30
 
 ### Change: All contact emails consolidated to noreply@hexvault.co.uk
@@ -11712,8 +10265,6 @@ Not changed:
 - app.py admin account (admin@hexvault.co.uk) — internal only
 
 ---
-
-
 ## [6.38.70] — 2026-03-30
 
 ### Fix: Changelog page not picking up new builds
@@ -11737,8 +10288,6 @@ Root causes identified and fixed:
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.69] — 2026-03-30
 
 ### Fix: Landing footer Family removed, footer sticks to bottom on all pages
@@ -11755,8 +10304,6 @@ Sticky footer (all 10 site pages + landing):
 - Fixes contact page and other short pages where footer floated mid-page
 
 ---
-
-
 ## [6.38.68] — 2026-03-30
 
 ### Fix: Footer padding further reduced, contact bottom padding removed
@@ -11776,8 +10323,6 @@ Note: if Family still appears in footer, the previous build (6.38.67)
 has not been deployed yet. Both 6.38.67 and 6.38.68 fix this.
 
 ---
-
-
 ## [6.38.67] — 2026-03-30
 
 ### Fix: Footer padding, Family references removed
@@ -11799,8 +10344,6 @@ Family tier references removed across all pages:
 - Footer product column: "Family" link -> "Team" link (matching new pricing)
 
 ---
-
-
 ## [6.38.66] — 2026-03-30
 
 ### Fix: Demo vault card updated to match new product positioning
@@ -11822,8 +10365,6 @@ Footer stats:
 - HexGuard badge: "resolved 4 issues" -> "resolved 3 issues"
 
 ---
-
-
 ## [6.38.65] — 2026-03-30
 
 ### Redesign: Pricing section with 4 tiers
@@ -11852,8 +10393,6 @@ Layout:
 Family vault removed from pricing (no longer a tier, may return as add-on).
 
 ---
-
-
 ## [6.38.64] — 2026-03-30
 
 ### Change: Heading fix, ZK demo, feature cards, enterprise items, pricing
@@ -11891,8 +10430,6 @@ Pricing updated:
 - Enterprise description: now leads with org vaults and multi-party approval
 
 ---
-
-
 ## [6.38.63] — 2026-03-29
 
 ### Site: Website copy updated across all pages
@@ -11931,8 +10468,6 @@ Site pages:
   context not just commit messages"
 
 ---
-
-
 ## [6.38.62] — 2026-03-29
 
 ### Fix: Banner corners, all dots/grids removed, responsive card
@@ -11962,8 +10497,6 @@ Cross-browser:
   on the profile card for Safari compatibility
 
 ---
-
-
 ## [6.38.61] — 2026-03-29
 
 ### Fix: Page grid background removed, avatar cut-off fixed
@@ -11988,8 +10521,6 @@ Avatar HV cut-off fixed:
 - Avatar now fully visible sitting astride the banner/body boundary.
 
 ---
-
-
 ## [6.38.60] — 2026-03-29
 
 ### Fix: Sign in links, grid backgrounds removed, clean design
@@ -12010,8 +10541,6 @@ Removed square grid backgrounds and animations:
 Result: all pages render cleanly with no grid overlays or pulsing rings.
 
 ---
-
-
 ## [6.38.59] — 2026-03-29
 
 ### Fix: Changelog loading, TOC bottom sections, footer padding, contact padding, profile card
@@ -12050,8 +10579,6 @@ Profile card redesigned (about page):
 - Tighter, more refined proportions overall
 
 ---
-
-
 ## [6.38.58] — 2026-03-29
 
 ### Fix: Nav/footer consistency, old pages removed, 405 error, padding
@@ -12085,8 +10612,6 @@ Status page 405 error fixed:
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.57] — 2026-03-29
 
 ### Fix: Contact page MIME type error and Cloudflare email obfuscation
@@ -12105,8 +10630,6 @@ Fixed:
 - No more MIME type errors or failed script loads on /contact.
 
 ---
-
-
 ## [6.38.56] — 2026-03-29
 
 ### Fix: Footer links, status page auth errors, active page highlighting
@@ -12126,8 +10649,6 @@ Status page fixed (no more auth errors in console):
 - These all return 200 without authentication
 
 ---
-
-
 ## [6.38.55] — 2026-03-29
 
 ### Fix: Footer CSS, TOC, CSP, cookies page
@@ -12162,8 +10683,6 @@ cookies.html fully rebuilt:
 - Active nav link highlighting (Cookies highlighted in Legal footer col).
 
 ---
-
-
 ## [6.38.54] — 2026-03-29
 
 ### Fix: CSS corruption on 7 site pages (white/broken layout)
@@ -12185,8 +10704,6 @@ All pages now have dark background (#040408), correct text colours,
 and IBM Plex Sans font stack.
 
 ---
-
-
 ## [6.38.53] — 2026-03-29
 
 ### Fix: CSP violations, updates page reads CHANGELOG.md, status page
@@ -12217,8 +10734,6 @@ Status page (/status):
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.52] — 2026-03-29
 
 ### Fix: Site pages: fonts, CSP violations, TOC, consistent scripts
@@ -12245,8 +10760,6 @@ TOC:
 - Smooth scroll on TOC link click via scrollIntoView.
 
 ---
-
-
 ## [6.38.51] — 2026-03-29
 
 ### Fix: Site page footer CSS design preserved correctly
@@ -12269,8 +10782,6 @@ Fixed:
   present, flex:2 layout confirmed.
 
 ---
-
-
 ## [6.38.50] — 2026-03-29
 
 ### Fix: Site pages: footer consistency, CSP violations, careers page
@@ -12297,8 +10808,6 @@ Careers page:
   and page-specific copy.
 
 ---
-
-
 ## [6.38.49] — 2026-03-29
 
 ### Fix: Contact form on /contact page not working
@@ -12319,8 +10828,6 @@ The /api/contact route was already correct — handles name, email,
 subject, message and sends via Postmark.
 
 ---
-
-
 ## [6.38.48] — 2026-03-29
 
 ### Fix: CSP violation in activity log locked state
@@ -12333,8 +10840,6 @@ which is handled by the existing event delegation system in event-handlers.js.
 Note: secure notes blank and activity log 500 still require the full
 
 ---
-
-
 ## [6.38.47] — 2026-03-29
 
 ### Fix: Breach badge, secure notes blank, activity log upgrade modal
@@ -12365,8 +10870,6 @@ Activity log opening upgrade modal on free tier:
 Requires full rebuild (app.py changed):
 
 ---
-
-
 ## [6.38.46] — 2026-03-28
 
 ### Fix: Stripe config, pricing, docker-compose env vars, APP_URL gap
@@ -12390,8 +10893,6 @@ Impact: verification emails now use correct APP_URL for verify links.
 Stripe checkout now maps to correct plan keys.
 
 ---
-
-
 ## [6.38.45] — 2026-03-28
 
 ### Fix: OG images replaced with v4 (readable text, uniform hex mesh)
@@ -12410,8 +10911,6 @@ Changes from v3:
 - White (#fff) title lines — readable at any thumbnail size
 
 ---
-
-
 ## [6.38.44] — 2026-03-28
 
 ### Feature: Marketing site, OG images, SEO, Flask routes for all site pages
@@ -12453,8 +10952,6 @@ Flask routes added to app.py:
 - app.py syntax verified clean
 
 ---
-
-
 ## [6.38.43] — 2026-03-28
 
 ### Feature: Multi-tier schema migrations (Personal / Family / Org / Enterprise)
@@ -12493,8 +10990,6 @@ Column additions to existing tables:
   is_active, last_rotated_at, rotation_required_by
 
 ---
-
-
 ## [6.38.42] — 2026-03-28
 
 ### Fix: Shared passwords 500 error suppressed
@@ -12508,8 +11003,6 @@ silent. The Shared tab simply shows no content until the DB rebuild
 makes the endpoint functional.
 
 ---
-
-
 ## [6.38.41] — 2026-03-28
 
 ### Fix: Developer Mode/Onboarding/Danger Zone leaking into Security tab; activity-log 500 noise
@@ -12535,8 +11028,6 @@ Activity log 500 console errors suppressed:
   unavailable" in the timeline instead of throwing to console.
 
 ---
-
-
 ## [6.38.40] — 2026-03-28
 
 ### Fix: [decryption failed], secure notes empty UI, CSS conflicts
@@ -12565,8 +11056,6 @@ Secure notes empty state still not showing:
 Confirmed: Danger Zone is only in accountTab — no change needed.
 
 ---
-
-
 ## [6.38.39] — 2026-03-28
 
 ### Redesign: Add/Edit password modal is now 3-step; multiple fixes
@@ -12600,8 +11089,6 @@ Password reveal flash then hides:
   copy-card handler as a second defence.
 
 ---
-
-
 ## [6.38.38] — 2026-03-28
 
 ### Fix: Notification polling causing HTTP 429 rate limit errors
@@ -12622,8 +11109,6 @@ Two fixes:
 change to take effect. The poll interval fix takes effect on restart.
 
 ---
-
-
 ## [6.38.37] — 2026-03-28
 
 ### Fix: Secure notes empty state always visible; breach count clears after fix
@@ -12651,8 +11136,6 @@ Breach count not clearing after AI fix:
   both the counter card and the password bar update immediately.
 
 ---
-
-
 ## [6.38.36] — 2026-03-28
 
 ### Fix: Fix All buttons unclickable (CSS pseudo-element blocking clicks)
@@ -12667,8 +11150,6 @@ Fixed by adding pointer-events:none to .stat-card::before.
 One line, root cause.
 
 ---
-
-
 ## [6.38.35] — 2026-03-28
 
 ### Fix: Import/Export opens modal; Upgrade closes current modal first
@@ -12689,8 +11170,6 @@ Upgrade to Pro buttons:
   is called first, then upgradeModal opens cleanly.
 
 ---
-
-
 ## [6.38.34] — 2026-03-28
 
 ### Fix: Real-time updates, breach recheck, notifications position, secure notes UI
@@ -12726,8 +11205,6 @@ in the Data settings tab. The Import Passwords inside importExportModal
 is a modal (opened from the vault header button), not a settings tab.
 
 ---
-
-
 ## [6.38.33] — 2026-03-28
 
 ### Redesign: Security Dashboard v2 (tabbed, interactive)
@@ -12757,8 +11234,6 @@ Tips tab:
 ---
 
 ---
-
-
 ## [6.38.32] — 2026-03-28
 
 ### Redesign: Security Dashboard visual overhaul
@@ -12797,8 +11272,6 @@ Pro lock overlay:
 - Cleaner blur overlay, simpler copy, indigo upgrade button
 
 ---
-
-
 ## [6.38.31] — 2026-03-28
 
 ### Fix: Dead subscription API endpoints causing 404s
@@ -12821,8 +11294,6 @@ data-action="openUpgradeModal" wired in event-handlers.js:
 Emoji removed from security dashboard score trends card (📈 → SVG).
 
 ---
-
-
 ## [6.38.30] — 2026-03-28
 
 ### Fix: Fix All tier gate restored; personal users see upgrade modal
@@ -12843,8 +11314,6 @@ be deployed — once that is done, /api/profile returns the correct tier
 and the gate works as expected.
 
 ---
-
-
 ## [6.38.29] — 2026-03-28
 
 ### Fix: Fix it buttons on stat cards now open HexGuard AI modal
@@ -12869,8 +11338,6 @@ Flow after this fix:
 4. User reviews and clicks Apply — password saved encrypted
 
 ---
-
-
 ## [6.38.28] — 2026-03-28
 
 ### Fix: Fix All buttons now open HexGuard AI modal
@@ -12896,8 +11363,6 @@ ai-password-fix.js hasProAccess() updated:
   the request in dev/trial mode.
 
 ---
-
-
 ## [6.38.27] — 2026-03-28
 
 ### Fix: All emojis removed from app, notification bell, secure notes
@@ -12923,8 +11388,6 @@ Secure notes empty state on error:
   "Add your first note" button now shows instead of just a toast.
 
 ---
-
-
 ## [6.38.26] — 2026-03-28
 
 ### Fix: Notifications bell restored, secure notes empty state, emoji removed
@@ -12950,8 +11413,6 @@ Settings import/export tab isolation:
   working — import/export only appears in Data tab).
 
 ---
-
-
 ## [6.38.25] — 2026-03-28
 
 ### Fix: Settings always opens on Account tab; import/export isolated to Data tab
@@ -12971,8 +11432,6 @@ Data are structurally only in dataTab. The CSS display:none rule on
 stale tab state persisting across open/close cycles.
 
 ---
-
-
 ## [6.38.24] — 2026-03-28
 
 ### Fix: Danger Zone moved to Account tab; Data tab now clean
@@ -12990,8 +11449,6 @@ Data tab sections (from top):
   Import Passwords → Export Your Data
 
 ---
-
-
 ## [6.38.23] — 2026-03-28
 
 ### Fix: Fix All buttons, import UI restored, password counter
@@ -13018,8 +11475,6 @@ JS — counter was working, the apparent issue was the Fix All buttons
 not responding due to the CSP violation above.
 
 ---
-
-
 ## [6.38.22] — 2026-03-28
 
 ### Fix: Root cause of all DB 500 errors: psycopg2 autocommit
@@ -13050,8 +11505,6 @@ resolves the 500 errors on /api/profile, /api/secure-notes,
 /api/profile/picture, /api/billing/status, /api/onboarding/status.
 
 ---
-
-
 ## [6.38.21] — 2026-03-28
 
 ### Fix: Critical: DB connection status check was wrong constant
@@ -13071,8 +11524,6 @@ should finally resolve the transaction state errors.
 will not apply app.py changes.
 
 ---
-
-
 ## [6.38.20] — 2026-03-28
 
 ### Fix: Emojis, CSP, notifications, import/export duplication, Fix All
@@ -13107,8 +11558,6 @@ Fix All dev mode bypass improved:
   without waiting for window.isDevModeActive to be set.
 
 ---
-
-
 ## [6.38.19] — 2026-03-28
 
 ### Fix: Two undefined variable bugs found via Pylance, dead code removed
@@ -13136,8 +11585,6 @@ Added user-agents to requirements.txt:
   but missing from requirements.txt. Added user-agents==2.2.0.
 
 ---
-
-
 ## [6.38.18] — 2026-03-28
 
 ### Fix: All modals close on overlay click and ESC key; consistent close button styling
@@ -13163,8 +11610,6 @@ Close button styling standardised:
   to closeShareLinkModal() alongside the existing closeShareLinkBtn.
 
 ---
-
-
 ## [6.38.17] — 2026-03-28
 
 ### Fix: Settings Data tab clutter, import UI added, onboarding moved
@@ -13188,8 +11633,6 @@ Data tab section order (from top):
   Backup → Export Your Data → Danger Zone
 
 ---
-
-
 ## [6.38.16] — 2026-03-28
 
 ### Fix: UI polish, notifications, billing, Fix All, secure notes
@@ -13233,8 +11676,6 @@ CSP violations from inline onclick handlers:
 - interactive-security-report.js: print/close buttons converted to data attrs.
 
 ---
-
-
 ## [6.38.15] — 2026-03-28
 
 ### Fix: CSP violations from inline onclick handlers
@@ -13254,8 +11695,6 @@ All three files fixed by:
   that read the data attributes and call the appropriate functions
 
 ---
-
-
 ## [6.38.14] — 2026-03-28
 
 ### Fix: settings-handler.js syntax error (SyntaxError: expected expression)
@@ -13272,8 +11711,6 @@ Fixed by removing the orphaned ); and appending the missing }); to close
 the DOMContentLoaded block. Syntax validated with node --check.
 
 ---
-
-
 ## [6.38.13] — 2026-03-28
 
 ### Fix: Folder dropdown, share link, settings profile fields
@@ -13306,8 +11743,6 @@ Settings profile fields blank (username/email empty):
   result in window.currentUserProfile for use by PDF export etc.
 
 ---
-
-
 ## [6.38.12] — 2026-03-28
 
 ### Fix: Security dashboard close, PDF export, billing cache-bust, trial tier
@@ -13333,8 +11768,6 @@ Trial tier not treated as paid:
   features. Added 'trial' to both checks.
 
 ---
-
-
 ## [6.38.11] — 2026-03-28
 
 ### Fix: Five bugs: view password, security dashboard, PDF export, Fix All, secure notes
@@ -13371,8 +11804,6 @@ Secure notes:
   No code change needed.
 
 ---
-
-
 ## [6.38.10] — 2026-03-28
 
 ### Fix: Admin features completely removed from the app
@@ -13406,8 +11837,6 @@ Updated loadOrgSection() to show orgAdminLink only to admins/owners.
 Div balance verified: 644 open, 644 close — OK.
 
 ---
-
-
 ## [6.38.9] — 2026-03-28
 
 ### Fix: PostgreSQL transaction state errors and enterprise panel visibility
@@ -13437,8 +11866,6 @@ Security analytics 400 on empty vault:
 - Fixed: empty list now returns zeroed analytics instead of an error.
 
 ---
-
-
 ## [6.38.8] — 2026-03-28
 
 ### Fix: Multiple UI bugs and 500 errors
@@ -13476,8 +11903,6 @@ Settings modal click-outside:
   settings-handler.js — modal-click-outside.js handles it correctly.
 
 ---
-
-
 ## [6.38.7] — 2026-03-28
 
 ### Fix: All modals were inside vaultContainer (actual root cause of 2FA bug)
@@ -13504,8 +11929,6 @@ on .modal-overlay for Firefox compatibility, and added display:flex
 !important to .modal-overlay.active rules.
 
 ---
-
-
 ## [6.38.6] — 2026-03-28
 
 ### Fix: 2FA modal has zero dimensions (actual root cause)
@@ -13525,8 +11948,6 @@ Fixes:
   to prevent any cascade conflict from hiding the display value
 
 ---
-
-
 ## [6.38.5] — 2026-03-28
 
 ### Fix: 2FA setup modal closed by lingering login click
@@ -13551,8 +11972,6 @@ This fix applies to all modals, protecting against the same race condition
 anywhere a modal is opened programmatically in response to a user click.
 
 ---
-
-
 ## [6.38.4] — 2026-03-27
 
 ### Feature: Org owner notification + members management panel
@@ -13575,8 +11994,6 @@ New API endpoints:
 - DELETE /api/org/invitations/<id> — cancels a pending invitation
 
 ---
-
-
 ## [6.38.3] — 2026-03-27
 
 ### Feature: Organisation self-serve onboarding flow
@@ -13621,8 +12038,6 @@ Frontend:
 Requires full image rebuild (Dockerfile updated with join.html).
 
 ---
-
-
 ## [6.38.2] — 2026-03-27
 
 ### Debug: Trace who closes setupTwoFactorModal
@@ -13633,8 +12048,6 @@ call stack. Deploy, trigger 2FA setup, check console for
 [2FA TRACE] output.
 
 ---
-
-
 ## [6.38.1] — 2026-03-27
 
 ### Fix: 2FA setup modal closed immediately after opening
@@ -13653,8 +12066,6 @@ the same race condition.
 Also removed the temporary setTimeout(0) workaround added in v6.38.0.
 
 ---
-
-
 ## [6.38.0] — 2026-03-27
 
 ### Fix: 2FA setup modal immediately closed by bubbling login click event
@@ -13670,8 +12081,6 @@ in setTimeout(..., 0), deferring them until after the current event loop
 clears and the click event has finished propagating.
 
 ---
-
-
 ## [6.37.99] — 2026-03-27
 
 ### Fix: 2FA QR code blank due to render timing
@@ -13684,8 +12093,6 @@ setupModal.style.opacity = '1', ensuring the render happens after the
 modal is painted to screen.
 
 ---
-
-
 ## [6.37.98] — 2026-03-27
 
 ### Debug: Added console logging to 2FA QR render for diagnostics
@@ -13696,8 +12103,6 @@ QRious availability, secret presence, full otpauth URI, and render
 outcome. Check browser console when 2FA modal opens.
 
 ---
-
-
 ## [6.37.97] — 2026-03-27
 
 ### Fix: 2FA setup QR code not rendering
@@ -13717,8 +12122,6 @@ Changes:
 - White background on canvas ensures QR is scannable in dark theme
 
 ---
-
-
 ## [6.37.96] — 2026-03-27
 
 ### Fix: email_service.py line 140 apostrophe terminating f-string on Python 3.11
@@ -13732,8 +12135,6 @@ the _h1() call with the apostrophe-containing string sits outside the
 single-quoted string entirely.
 
 ---
-
-
 ## [6.37.95] — 2026-03-27
 
 ### Change: Rate limits raised for testing
@@ -13748,8 +12149,6 @@ Auth and email endpoints temporarily raised for development testing:
 TODO: Restore production limits before public launch.
 
 ---
-
-
 ## [6.37.94] — 2026-03-27
 
 ### Fix: email_service.py nested f-string syntax error on Python 3.11
@@ -13768,8 +12167,6 @@ with string concatenation:
 email_service.py is a Python file baked into the image.
 
 ---
-
-
 ## [6.37.93] — 2026-03-27
 
 ### Fix: Non-JSON response handling on rate-limited endpoints
@@ -13787,8 +12184,6 @@ Both fixes use the same pattern: check content-type header for
 'application/json' before attempting to parse, default data to {}.
 
 ---
-
-
 ## [6.37.92] — 2026-03-27
 
 ### Fix: Forgot password modal redesigned to match app design system
@@ -13809,8 +12204,6 @@ instead of its own bespoke styles:
 - Zero-knowledge warning retained as an inline info box using CSS variables
 
 ---
-
-
 ## [6.37.90] — 2026-03-27
 
 ### Fix: CSP audit: admin panel onerror handler and Chart.js CDN
@@ -13832,8 +12225,6 @@ in v6.37.89:
   event handlers, all scripts external or hash-whitelisted.
 
 ---
-
-
 ## [6.37.89] — 2026-03-27
 
 ### Fix: CSP violation on login page
@@ -13846,8 +12237,6 @@ which is already wired during DOMContentLoaded alongside the rest of the
 honeypot switch logic.
 
 ---
-
-
 ## [6.37.88] — 2026-03-27
 
 ### Fix: Hero layout and favicon errors
@@ -13863,8 +12252,6 @@ honeypot switch logic.
   pointing to favicon.svg in index.html to match landing.html.
 
 ---
-
-
 ## [6.37.87] — 2026-03-27
 
 ### Fix: landing.html CSS corruption (3 more broken fragments)
@@ -13883,8 +12270,6 @@ CSS brace count is now balanced: 472 open, 472 close. No orphaned fragments.
 - landing.html — no restart needed
 
 ---
-
-
 ## [6.37.86] — 2026-03-27
 
 ### Fix: Landing page broken CSS + Updates page not loading
@@ -13905,8 +12290,6 @@ public endpoint list alongside join_waitlist, contact_form, etc.
 - app.py — requires container restart
 
 ---
-
-
 ## [6.37.85] — 2026-03-27
 
 ### Fix: CSP inline script violations
@@ -13926,8 +12309,6 @@ errors and ensures no inline scripts are silently blocked.
 - app.py — requires container restart
 
 ---
-
-
 ## [6.37.84] — 2026-03-27
 
 ### Packaged: No code changes
@@ -13937,8 +12318,6 @@ All features from v6.37.75–v6.37.83 are included (SEO, email verification,
 in-app notifications, admin chart/export routes, TOTP extension, etc).
 
 ---
-
-
 ## [6.37.83] — 2026-03-26
 
 ### Fix: Emergency Access
@@ -14713,8 +13092,6 @@ Phase 4: Honeypot bypass via API response, backup code brute-force, invite race 
 ### New files
 - db-hardening.sql: run once as postgres superuser to restrict app DB user to SELECT/INSERT/UPDATE/DELETE only, revoke CREATE, set 25 connection limit
 - SECURITY-CHECKLIST.md: deployment checklist covering Cloudflare settings, Docker verification, DB hardening, monitoring, and quarterly rotation schedule
-
-
 ## [6.37.82] — 2026-03-26
 
 ### Feature: Emergency Access (Feature 1)
@@ -14737,8 +13114,6 @@ Phase 4: Honeypot bypass via API response, backup code brute-force, invite race 
 - Passkey picker overlay when HexVault passkeys match the current RP
 - Background.js: HV_STATUS, HV_GET_PASSKEYS, HV_DECRYPT_PASSKEY message handlers
 - UI in Settings → Security tab: list passkeys grouped by site, remove individual keys
-
-
 ## [6.37.81] — 2026-03-26
 
 ### Added
@@ -14754,8 +13129,6 @@ Phase 4: Honeypot bypass via API response, backup code brute-force, invite race 
 ### Changed
 - admin/me now returns org slug, logo URL, primary colour, and allowed domains
 - Overview dashboard "Recent Activity" now shows member vault events, not admin audit entries
-
-
 ## [6.37.79] — 2026-03-26
 
 ### Multiple: Website, App, Admin Portal, Browser Extension
@@ -14795,8 +13168,6 @@ Phase 4: Honeypot bypass via API response, backup code brute-force, invite race 
 - hexvault-extension-v1.1.0.zip
 
 ---
-
-
 ## [6.37.78] — 2026-03-26
 
 ### Fix: Landing page showed PBKDF2 instead of Argon2id
@@ -14812,8 +13183,6 @@ All three updated to Argon2id with accurate parameter descriptions (memory-hard,
 - `landing.html` — static file, no restart needed
 
 ---
-
-
 ## [6.37.77] — 2026-03-26
 
 ### Feature: In-app notification system
@@ -14855,8 +13224,6 @@ All three updated to Argon2id with accurate parameter descriptions (memory-hard,
 - `index.html` — static, no restart
 
 ---
-
-
 ## [6.37.76] — 2026-03-26
 
 ### Feature: Email verification
@@ -14894,8 +13261,6 @@ Full email verification flow for new registrations.
 - `static/style.css` — static file, no restart
 
 ---
-
-
 ## [6.37.75] — 2026-03-26
 
 ### Change: SEO overhaul for Google indexing
@@ -14928,8 +13293,6 @@ Full email verification flow for new registrations.
 - app.py — requires container restart (sitemap change)
 
 ---
-
-
 ## [6.37.74] — 2026-03-26
 
 ### Fix: Admin portal 500 errors on /api/admin/stats and /api/admin/2fa/status
@@ -14948,8 +13311,6 @@ Fixed by:
 - `app.py` — requires container restart
 
 ---
-
-
 ## [6.37.73] — 2026-03-26
 
 ### Fix: Enterprise panel and Save Policy bleeding onto login screen (root cause)
@@ -14964,8 +13325,6 @@ The real cause was a structural HTML bug: vaultContainer was closing prematurely
 - `index.html`
 
 ---
-
-
 ## [6.37.72] — 2026-03-26
 
 ### Fix: Reverted theme toggle removal, kept vaultContainer fix
@@ -14978,8 +13337,6 @@ The real cause was a structural HTML bug: vaultContainer was closing prematurely
 - `index.html`
 
 ---
-
-
 ## [6.37.71] — 2026-03-26
 
 ### Fix: Login screen showing wrong elements (corrected)
@@ -14998,8 +13355,6 @@ Previous version (6.37.70) incorrectly removed the Google and GitHub login butto
 - `index.html`
 
 ---
-
-
 ## [6.37.70] — 2026-03-26
 
 ### Fix: Vault app login screen showing wrong UI
@@ -15025,8 +13380,6 @@ Was accidentally removed with the social buttons block (it sat between social-bu
 - `index.html`
 
 ---
-
-
 ## [6.37.69] — 2026-03-26
 
 ### Fix: landing.html CSS catastrophically stripped
@@ -15044,8 +13397,6 @@ The CSS region detection used `rfind()` to locate the footer section start, whic
 - `landing.html` — restored from v6.37.64 + targeted .flogo addition
 
 ---
-
-
 ## [6.37.68] — 2026-03-26
 
 ### Fix: CSS breakage across secondary pages
@@ -15069,8 +13420,6 @@ Several CSS issues were introduced by earlier script runs and are now corrected:
 - `faq.html`, `updates.html`, `status.html`, `privacy-policy.html`, `terms-of-service.html`, `security.html`
 
 ---
-
-
 ## [6.37.67] — 2026-03-26
 
 ### Fix: Nav bar consistency across all secondary pages
@@ -15094,8 +13443,6 @@ Every secondary page except status.html was missing `/status` in its cross-navig
 - `security.html` — aria-label + .nback:hover normalised
 
 ---
-
-
 ## [6.37.66] — 2026-03-26
 
 ### Fix: Skip link visible on all secondary pages
@@ -15108,8 +13455,6 @@ Fixed by adding `.skip-link{position:absolute;top:-40px;...}.skip-link:focus{top
 - `faq.html`, `privacy-policy.html`, `terms-of-service.html`, `updates.html`, `status.html`
 
 ---
-
-
 ## [6.37.65] — 2026-03-26
 
 ### Fix: Footer CSS consistency and cross-browser issues
@@ -15135,8 +13480,6 @@ Differences found and resolved:
 - `landing.html`, `faq.html`, `security.html`, `privacy-policy.html`, `terms-of-service.html`, `updates.html`, `status.html` — footer CSS normalised
 
 ---
-
-
 ## [6.37.64] — 2026-03-26
 
 ### Fix: CSP violations breaking security page and vault features
@@ -15162,8 +13505,6 @@ The "Read the full technical architecture →" link added in v6.37.58 used `onmo
 - `static/chart.umd.min.js` — new (200 KB)
 
 ---
-
-
 ## [6.37.63] — 2026-03-26
 
 ### Fix: Footer consistency across all pages
@@ -15190,8 +13531,6 @@ The "Read the full technical architecture →" link added in v6.37.58 used `onmo
 - `security.html` — footer role + Contact added
 
 ---
-
-
 ## [6.37.62] — 2026-03-26
 
 ### Security: API & Database Bug Hunt
@@ -15227,8 +13566,6 @@ The "Read the full technical architecture →" link added in v6.37.58 used `onmo
 - `app.py` — 8 fixes applied
 
 ---
-
-
 ## [6.37.61] — 2026-03-26
 
 ### Fix: CSP & Security Headers
@@ -15268,15 +13605,11 @@ The "Read the full technical architecture →" link added in v6.37.58 used `onmo
 - `faq.html`, `security.html`, `privacy-policy.html`, `terms-of-service.html`, `updates.html`, `status.html` — cross-nav added
 
 ---
-
-
 ## [6.37.60] — 2026-03-26
 
 ### Fixed
 
 ---
-
-
 ## [6.37.59] — 2026-03-26
 
 ### Change: Password Import
@@ -15308,8 +13641,6 @@ Complete overhaul of `vault-export-import.js` and import modal.
 - `index.html` — import format grid updated to 10 buttons
 
 ---
-
-
 ## [6.37.58] — 2026-03-26
 
 ### Added
@@ -15328,8 +13659,6 @@ Complete overhaul of `vault-export-import.js` and import modal.
 - `static/toc.js` — bottom-of-page fix + 20% viewport trigger
 
 ---
-
-
 ## [6.37.57] — 2026-03-26
 
 ### Change: Email consolidated onto Postmark HTTP API
@@ -15364,8 +13693,6 @@ All transactional email now goes through `email_service.py` via Postmark's REST 
 - `app.py` — Flask-Mail removed, wrappers added
 
 ---
-
-
 ## [6.37.55] — 2026-03-25
 
 ### Feature: Per-entry encryption keys
@@ -15396,8 +13723,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `app.py`
 
 ---
-
-
 ## [6.37.54] — 2026-03-25
 
 ### Added
@@ -15415,8 +13740,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `security.html` — complete rebuild
 
 ---
-
-
 ## [6.37.53] — 2026-03-25
 
 ### Feature: Stripe Billing
@@ -15459,8 +13782,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `requirements.txt` — stripe==14.4.1
 
 ---
-
-
 ## [6.37.52] — 2026-03-26
 
 ### Feature: Trial & Subscription Enforcement
@@ -15476,8 +13797,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/billing-handler.js` — global 402 interceptor
 
 ---
-
-
 ## [6.37.51] — 2026-03-25
 
 ### Fixed
@@ -15499,8 +13818,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `admin.html` — 2FA card in account section
 
 ---
-
-
 ## [6.37.50] — 2026-03-25
 
 ### Fixed
@@ -15519,8 +13836,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `app.py` — production CSP updated
 
 ---
-
-
 ## [6.37.49] — 2026-03-25
 
 ### Security
@@ -15537,8 +13852,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `app.py`
 
 ---
-
-
 ## [6.37.29] — 2026-03-24
 
 ### Security: Argon2id replaces PBKDF2
@@ -15556,8 +13869,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `app.py` — wasm-unsafe-eval added to CSP
 
 ---
-
-
 ## [6.37.21] — 2026-03-22
 
 ### Fixed
@@ -15575,8 +13886,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html` — added closeActivityLogBtn, added dashboardScoreBar
 
 ---
-
-
 ## [6.37.20] — 2026-03-22
 
 ### Fixed
@@ -15590,8 +13899,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/dev-toolbar.js`
 
 ---
-
-
 ## [6.37.19] — 2026-03-22
 
 ### Fixed
@@ -15604,8 +13911,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/onboarding-handler.js` — uses getHeaders()
 
 ---
-
-
 ## [6.37.18] — 2026-03-22
 
 ### Fixed
@@ -15619,8 +13924,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/style.css` — `.family-invite-slot` hover CSS
 
 ---
-
-
 ## [6.37.17] — 2026-03-22
 
 ### Fixed
@@ -15630,8 +13933,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/dev-toolbar.js`
 
 ---
-
-
 ## [6.37.16] — 2026-03-22
 
 ### Fixed
@@ -15645,8 +13946,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html` — remove proTestingToggle section from dataTab
 
 ---
-
-
 ## [6.37.15] — 2026-03-22
 
 ### Fixed
@@ -15658,8 +13957,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html` — favicon link tags
 
 ---
-
-
 ## [6.37.14] — 2026-03-22
 
 ### Added
@@ -15678,8 +13975,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html` — Developer Mode toggle section in Account tab
 
 ---
-
-
 ## [6.37.13] — 2026-03-22
 
 ### Fixed
@@ -15691,8 +13986,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html`
 
 ---
-
-
 ## [6.37.12] — 2026-03-22
 
 ### Fixed
@@ -15704,8 +13997,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/dev-toolbar.js`
 
 ---
-
-
 ## [6.37.11] — 2026-03-22
 
 ### Added
@@ -15717,8 +14008,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/settings-handler.js`
 
 ---
-
-
 ## [6.37.10] — 2026-03-22
 
 ### Fixed
@@ -15730,8 +14019,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `static/biometric-auth.js`
 
 ---
-
-
 ## [6.37.9] — 2026-03-22
 
 ### Added
@@ -15750,8 +14037,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `index.html` — script tag added
 
 ---
-
-
 ## [6.37.8] — 2026-03-22
 
 ### Fixed
@@ -15763,8 +14048,6 @@ Each password entry is now encrypted with its own unique AES-256 key derived fro
 - `app.py`
 
 ---
-
-
 ## [6.37.7] — 2026-03-22
 
 ### Fixed

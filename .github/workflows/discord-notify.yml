@@ -1,0 +1,62 @@
+name: Discord push notification
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  notify:
+    # Public repos only — never broadcast a private/closed-source repo's
+    # commit messages or changed-file names into Discord.
+    if: ${{ github.event.repository.visibility == 'public' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history so we can diff the push range)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # shallow checkout can't diff before..after — the usual "0 files" cause
+
+      - name: Compute changes and post to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          BEFORE:  ${{ github.event.before }}
+          AFTER:   ${{ github.event.after }}
+          COMPARE: ${{ github.event.compare }}
+          PUSHER:  ${{ github.actor }}
+          REPO:    ${{ github.repository }}
+          REF:     ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$EMPTY_TREE"
+          else
+            BASE="$BEFORE"
+          fi
+
+          STAT=$(git diff --name-status "$BASE" "$AFTER" || true)
+
+          export N_ADDED=$(printf '%s\n' "$STAT"    | grep -c '^A' || true)
+          export N_DELETED=$(printf '%s\n' "$STAT"  | grep -c '^D' || true)
+          export N_MODIFIED=$(( $(printf '%s\n' "$STAT" | grep -c '^M' || true) + $(printf '%s\n' "$STAT" | grep -c '^R' || true) ))
+          export N_TOTAL=$(printf '%s\n' "$STAT"     | grep -c .    || true)
+          export GIT_LOG=$(git log --pretty=format:'%h %s' "$BASE".."$AFTER" 2>/dev/null | head -10 || true)
+
+          python3 <<'PY'
+          import json, os
+          a=int(os.environ.get("N_ADDED","0")); m=int(os.environ.get("N_MODIFIED","0"))
+          d=int(os.environ.get("N_DELETED","0")); t=int(os.environ.get("N_TOTAL","0"))
+          repo=os.environ["REPO"]; ref=os.environ["REF"]; pusher=os.environ["PUSHER"]
+          compare=os.environ.get("COMPARE") or None; after=os.environ["AFTER"][:7]
+          log=(os.environ.get("GIT_LOG") or "").strip() or "(no commit subjects)"
+          desc=(f"**+{a}** added \u00b7 **~{m}** modified \u00b7 **-{d}** deleted  "
+                f"({t} file{'s' if t!=1 else ''})\n\n{log}")
+          embed={"title":f"Push to {repo} ({ref})  {after}","description":desc[:4000],
+                 "color":0x6355FF,"footer":{"text":f"pushed by {pusher}"}}
+          if compare: embed["url"]=compare
+          open("payload.json","w").write(json.dumps({"username":"HexVault CI","embeds":[embed]}))
+          PY
+
+          echo "Payload preview:"; cat payload.json; echo
+          curl -sS -H "Content-Type: application/json" -X POST -d @payload.json "$DISCORD_WEBHOOK"

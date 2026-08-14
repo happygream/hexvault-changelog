@@ -1,3 +1,29 @@
+## [6.40.56] — 2026-08-14
+### Fixed
+- **2FA setup left the QR on screen and never reached the vault — and it also broke the onboarding walkthrough. Same root cause.** The forced-2FA path shows the setup modal with inline `display:flex !important; z-index:99999`. After a successful verify, the hide paths only called `classList.remove('active')`, which cannot override an inline `!important` style — so the modal stayed put. It kept the QR visible *and* its full-screen backdrop sat at `z-index:99999` over the vault and the spotlight tour (`z-index ~10050`), swallowing every click on the tour's highlighted elements and its **Next** button. Added `_fullyHideSetupTwoFactorModal()`, which clears the forced inline styles and is now used at all three hide sites (verify-success, backup-codes finish, and settings-flow close). Verification now transitions straight to the vault and the walkthrough is interactive.
+
+## [6.40.55] — 2026-08-14
+### Fixed
+- **Background status/uptime refresh failed with `could not translate host name "database"`.** The gunicorn `post_fork` hook rebuilds each worker's DB pool, but read `POSTGRES_HOST`/`POSTGRES_USER` with different defaults than `app.py` — `'database'`/`'hexvault'` vs `'localhost'`/`'vault'`. When `POSTGRES_HOST` wasn't set, workers tried to reach a host named `database` while the master used a different value, so worker-side jobs like `_compute_uptime_payload` failed. `post_fork` now reuses `app.py`'s resolved connection parameters as a single source of truth.
+
+## [6.40.54] — 2026-08-14
+### Fixed
+- **New signups could hit a 403 during forced two-factor setup, with a confusing "refresh the page" message.** During the `setup_2fa_required` state, `/api/onboarding/complete` wasn't allow-listed so the walkthrough couldn't persist completion (it 403'd silently and kept reappearing) — now allow-listed; and the login handler treated an unrecognised 403 as *"Session error — please refresh the page"*, now distinguishing email-unverified, session-expired, and 2FA-setup-required.
+
+## [6.40.53] — 2026-08-14
+### Security
+- Pre-production hardening pass: verified parameterised SQL throughout, rate-limited + IP-blocked + lockout-protected auth, origin-whitelist CORS, full security headers, `HttpOnly`+`SameSite`+`Secure` cookies, and fail-closed vault key-encryption handling.
+- **An internal scheduled-jobs endpoint now fails closed when its shared secret is unconfigured.**
+- **Tightened error responses** so internal exception details are no longer returned to clients.
+- **Added rate limits** to verification-resend, waitlist, and desktop-notify.
+### Added
+- **Disaster-recovery toolkit for self-hosted operators** (`ops/`): daily encrypted, self-verifying database backups with retention and optional off-site sync; a separate encrypted secrets backup (a DB backup is unrecoverable without it); a guided, safety-snapshotted restore; and a full recovery runbook.
+
+## [6.40.52] — 2026-08-14
+### Fixed
+- **Admin "manage billing" button returned 404** — it POSTed to `/api/billing/portal`, blocked on the admin subdomain. Added an admin-scoped `/api/admin/billing/portal`.
+- **HexGuard "explain this alert" 404'd** for the same reason — added `/api/admin/hexguard/explain`.
+- **A "stale accounts" admin button did nothing** — its `nav-stale` action had no handler; now opens the posture view.
 
 
 ## [6.40.26] — 2026-07-02

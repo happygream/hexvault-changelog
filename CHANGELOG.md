@@ -1,3 +1,20 @@
+## [6.40.60] — 2026-08-14
+### Security
+- **Full code re-audit.** Re-verified the security posture: parameterised SQL throughout (no injection), authenticated + org-scoped + CSRF-protected admin routes, no client-facing exception/stack-trace leaks, security headers and cookie flags intact, no hardcoded secrets. The public changelog renderer escapes all content, so `CHANGELOG.md` can never introduce script.
+- **Patched two dependencies with known CVEs:** `gunicorn` 21.2.0 → 22.0.0 (CVE-2024-1135, HTTP request smuggling) and `requests` 2.31.0 → 2.32.3 (CVE-2024-35195).
+- **Added rate limits** to the admin billing-portal and HexGuard "explain" endpoints (the latter calls an LLM, so the limit caps AI-cost abuse).
+
+## [6.40.59] — 2026-08-14
+### Fixed
+- **Deployed 2FA/onboarding fixes weren't reaching returning users — the service worker was serving a stale `script.js`.** It was served *stale-while-revalidate*, so a returning visitor ran the previously-cached copy and only fetched the new one for next time. Combined with `skipWaiting` having been removed, a user could remain several builds behind — still running the pre-6.40.56 modal-hide logic, so the QR code stayed stuck and the onboarding tour was unclickable *even though the fix was live*. App JS under `/static/*.js` is now served **network-first** (latest logic when online, cache only as an offline fallback), and `skipWaiting` is restored so a fresh build activates promptly. No forced page reloads.
+
+## [6.40.58] — 2026-08-14
+### Changed
+- **Onboarding walkthrough hardening.** An audit confirmed the spotlight tour's mechanics are sound after 6.40.56. Fixed one latent fragility: the step filter checked only element *existence*, not visibility — so a present-but-hidden target (e.g. a tier-gated button set to `display:none`) would have highlighted a 0×0 rectangle. Both the filter and resolver now require a real layout box; hidden targets are skipped cleanly and the tour continues on the visible steps.
+
+## [6.40.57] — 2026-08-14
+### Fixed
+- **The changelog page only listed 199 releases.** The parser capped its scan at the first 200 blocks (the first is the file preamble, so 199 rendered) even though `CHANGELOG.md` holds 900+ entries. Removed the cap so every release is parsed, returned, and searchable. Also corrected the release dates on the most recent entries, which had been recorded under the wrong month.
 ## [6.40.56] — 2026-08-14
 ### Fixed
 - **2FA setup left the QR on screen and never reached the vault — and it also broke the onboarding walkthrough. Same root cause.** The forced-2FA path shows the setup modal with inline `display:flex !important; z-index:99999`. After a successful verify, the hide paths only called `classList.remove('active')`, which cannot override an inline `!important` style — so the modal stayed put. It kept the QR visible *and* its full-screen backdrop sat at `z-index:99999` over the vault and the spotlight tour (`z-index ~10050`), swallowing every click on the tour's highlighted elements and its **Next** button. Added `_fullyHideSetupTwoFactorModal()`, which clears the forced inline styles and is now used at all three hide sites (verify-success, backup-codes finish, and settings-flow close). Verification now transitions straight to the vault and the walkthrough is interactive.

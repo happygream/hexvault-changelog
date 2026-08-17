@@ -15,6 +15,23 @@
 ## [6.40.57] — 2026-08-14
 ### Fixed
 - **The changelog page only listed 199 releases.** The parser capped at the first 200 blocks (the first is the file preamble, so 199 rendered) even though `CHANGELOG.md` holds 900+ entries. Removed the cap so every release is parsed and searchable. Also corrected recent release dates that had been recorded under the wrong month.
+## [6.40.60] — 2026-08-17
+### Security
+- **Full code re-audit.** Re-verified the security posture: parameterised SQL throughout (no injection), authenticated + org-scoped + CSRF-protected admin routes, no client-facing exception/stack-trace leaks, security headers and cookie flags intact, no hardcoded secrets. The changelog renderer escapes all content.
+- **Patched two dependencies with known CVEs:** `gunicorn` 21.2.0 → 22.0.0 (CVE-2024-1135) and `requests` 2.31.0 → 2.32.3 (CVE-2024-35195).
+- **Added rate limits** to the admin billing-portal and HexGuard "explain" endpoints (the latter calls an LLM, so the limit caps AI-cost abuse).
+
+## [6.40.59] — 2026-08-17
+### Fixed
+- **Deployed 2FA/onboarding fixes weren't reaching returning users — the service worker served a stale `script.js`.** It was served *stale-while-revalidate*, so a returning visitor ran the cached copy and only fetched the new one for next time; with `skipWaiting` removed, a user could stay several builds behind — still running the pre-6.40.56 modal-hide logic, so the QR stayed stuck and the tour was unclickable *even though the fix was live*. App JS under `/static/*.js` is now **network-first** (cache only as offline fallback), and `skipWaiting` is restored so fresh builds activate promptly. No forced reloads.
+
+## [6.40.58] — 2026-08-16
+### Changed
+- **Onboarding walkthrough hardening.** The spotlight tour's mechanics are sound after 6.40.56. Fixed one fragility: the step filter checked element *existence*, not visibility — so a present-but-hidden target (e.g. a tier-gated button at `display:none`) would highlight a 0×0 box. The filter and resolver now require a real layout box; hidden targets are skipped and the tour continues on visible steps.
+
+## [6.40.57] — 2026-08-14
+### Fixed
+- **The changelog page only listed 199 releases.** The parser capped at the first 200 blocks (the first is the file preamble, so 199 rendered) even though `CHANGELOG.md` holds 900+ entries. Removed the cap so every release is parsed and searchable. Also corrected recent release dates that had been recorded under the wrong month.
 ## [6.40.60] — 2026-08-14
 ### Security
 - **Full code re-audit.** Re-verified the security posture: parameterised SQL throughout (no injection), authenticated + org-scoped + CSRF-protected admin routes, no client-facing exception/stack-trace leaks, security headers and cookie flags intact, no hardcoded secrets. The public changelog renderer escapes all content, so `CHANGELOG.md` can never introduce script.

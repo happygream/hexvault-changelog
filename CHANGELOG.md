@@ -1,3 +1,6 @@
+## [6.40.64] — 2026-08-17
+### Added
+- New engineering post-mortem on the blog: *"The fix was live and users still hit the bug"* — how a service worker served a stale `script.js`, why "deployed" and "delivered" are different events, and the network-first fix. Read it at /blog/the-fix-was-live-and-users-still-hit-the-bug.
 ## [6.40.60] — 2026-08-17
 ### Security
 - **Full code re-audit.** Re-verified the security posture: parameterised SQL throughout (no injection), authenticated + org-scoped + CSRF-protected admin routes, no client-facing exception/stack-trace leaks, security headers and cookie flags intact, no hardcoded secrets. The changelog renderer escapes all content.
